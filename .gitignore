@@ -1,0 +1,29 @@
+# Rust build artifacts
+target/
+Cargo.lock
+
+# macOS system files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+
+# App bundles
+*.app
+
+# Temporary files
+*.tmp
+*.temp
