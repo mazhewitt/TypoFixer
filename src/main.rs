@@ -2,9 +2,6 @@ use cocoa::appkit::{NSApplicationActivationPolicyAccessory, NSApp};
 use cocoa::base::{id};
 use objc::{msg_send, sel, sel_impl};
 use accessibility_sys::*;
-use core_foundation::{base::*, string::*, number::*};
-use std::ffi::{CStr, CString};
-use std::os::raw::{c_void, c_uint};
 use global_hotkey::{GlobalHotKeyManager, HotKeyState, GlobalHotKeyEvent};
 use global_hotkey::hotkey::{HotKey, Modifiers, Code};
 // Mock llama implementation for now
