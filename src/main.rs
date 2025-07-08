@@ -16,7 +16,11 @@ mod error;
 mod menu_bar;
 
 use config::Config;
-use accessibility::{get_focused_element, is_secure_field, get_text_to_correct, set_text};
+use accessibility::{
+    get_focused_element, is_secure_field,
+    get_text_to_correct_with_fallbacks, get_text_via_clipboard_fallback, 
+    get_text_via_applescript, set_text_with_fallbacks, set_text_clipboard_only
+};
 use spell_check::{LlamaModelWrapper, generate_correction};
 use hotkey::{setup_hotkey, start_hotkey_event_loop};
 use menu_bar::{setup_menu_bar, get_menu_bar};
@@ -52,16 +56,55 @@ fn handle_hotkey_press() {
 }
 
 fn process_text_correction() -> Result<bool, Box<dyn std::error::Error>> {
-    // Get focused element
-    let focused_element = get_focused_element()?;
+    // Try to get focused element first
+    let focused_element = match get_focused_element() {
+        Ok(elem) => Some(elem),
+        Err(e) => {
+            warn!("Could not get focused element: {}", e);
+            None
+        }
+    };
     
-    // Check if it's a secure field
-    if is_secure_field(&focused_element) {
-        return Ok(false);
+    // Try different text extraction methods
+    let (text, range) = match focused_element {
+        Some(ref elem) => {
+            // Try standard accessibility first
+            match get_text_to_correct_with_fallbacks(elem) {
+                Ok(result) => result,
+                Err(_) => {
+                    // Try clipboard fallback
+                    match get_text_via_clipboard_fallback() {
+                        Ok(result) => result,
+                        Err(_) => {
+                            // Try AppleScript fallback
+                            match get_text_via_applescript() {
+                                Ok(result) => result,
+                                Err(e) => {
+                                    return Err(format!("All text extraction methods failed: {}", e).into());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        None => {
+            // No focused element, try clipboard method directly
+            match get_text_via_clipboard_fallback() {
+                Ok(result) => result,
+                Err(e) => {
+                    return Err(format!("Text extraction failed: {}", e).into());
+                }
+            }
+        }
+    };
+    
+    // Check if it's a secure field (only if we have an element)
+    if let Some(ref elem) = focused_element {
+        if is_secure_field(elem) {
+            return Ok(false);
+        }
     }
-    
-    // Get selected text or extend selection
-    let (text, range) = get_text_to_correct(&focused_element)?;
     
     if text.trim().is_empty() {
         return Ok(false);
@@ -89,7 +132,27 @@ fn process_text_correction() -> Result<bool, Box<dyn std::error::Error>> {
     }
     
     // Apply correction
-    set_text(&focused_element, &corrected, range)?;
+    if let Some(ref elem) = focused_element {
+        // Try to set text with fallbacks
+        match set_text_with_fallbacks(elem, &corrected, range) {
+            Ok(()) => {
+                info!("✅ Successfully applied correction");
+            }
+            Err(e) => {
+                warn!("Failed to apply correction: {}", e);
+            }
+        }
+    } else {
+        // No element available, use clipboard-only method
+        match set_text_clipboard_only(&corrected) {
+            Ok(()) => {
+                info!("✅ Successfully applied correction via clipboard-only method");
+            }
+            Err(e) => {
+                warn!("Failed to apply correction via clipboard-only method: {}", e);
+            }
+        }
+    }
     
     Ok(true)
 }

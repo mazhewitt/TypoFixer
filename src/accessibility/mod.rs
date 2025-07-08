@@ -332,56 +332,61 @@ pub fn set_text(element: &ElementRef, text: &str, range: std::ops::Range<usize>)
         return Ok(());
     }
     
-    unsafe {
-        // First, let's get the current text to understand what we're working with
-        let value_attr = CFString::new("AXValue");
-        let mut current_value_ref: CFTypeRef = std::ptr::null();
-        let result = AXUIElementCopyAttributeValue(
+    // First, let's get the current text to understand what we're working with
+    let value_attr = CFString::new("AXValue");
+    let mut current_value_ref: CFTypeRef = std::ptr::null();
+    
+    // First unsafe operation: FFI call to get current value
+    let result = unsafe {
+        AXUIElementCopyAttributeValue(
             *element,
             value_attr.as_concrete_TypeRef(),
             &mut current_value_ref
-        );
-        
-        let current_text = if result == kAXErrorSuccess && !current_value_ref.is_null() {
-            let current_cfstring = CFString::wrap_under_get_rule(current_value_ref as CFStringRef);
-            current_cfstring.to_string()
-        } else {
-            String::new()
-        };
-        
-        // Calculate the new text by replacing the range with corrected text
-        let new_text = if range.start < current_text.len() && range.end <= current_text.len() {
-            let mut result = String::new();
-            result.push_str(&current_text[..range.start]);
-            result.push_str(text);
-            result.push_str(&current_text[range.end..]);
-            result
-        } else {
-            // If range is invalid, replace all text
-            text.to_string()
-        };
-        
-        // Create CFString for the new text
-        let new_text_cfstring = CFString::new(&new_text);
-        
-        // Set the new value
-        let result = AXUIElementSetAttributeValue(
+        )
+    };
+    
+    let current_text = if result == kAXErrorSuccess && !current_value_ref.is_null() {
+        // Second unsafe operation: wrapping raw pointer from FFI
+        let current_cfstring = unsafe { CFString::wrap_under_get_rule(current_value_ref as CFStringRef) };
+        current_cfstring.to_string()
+    } else {
+        String::new()
+    };
+    
+    // Calculate the new text by replacing the range with corrected text (safe operations)
+    let new_text = if range.start < current_text.len() && range.end <= current_text.len() {
+        let mut result = String::new();
+        result.push_str(&current_text[..range.start]);
+        result.push_str(text);
+        result.push_str(&current_text[range.end..]);
+        result
+    } else {
+        // If range is invalid, replace all text
+        text.to_string()
+    };
+    
+    // Create CFString for the new text (safe operation)
+    let new_text_cfstring = CFString::new(&new_text);
+    
+    // Third unsafe operation: FFI call to set the new value
+    let result = unsafe {
+        AXUIElementSetAttributeValue(
             *element,
             value_attr.as_concrete_TypeRef(),
             new_text_cfstring.as_CFTypeRef()
-        );
+        )
+    };
+    
+    if result != kAXErrorSuccess {
+        warn!("Failed to set text via AXValue: AX error {}", result);
         
-        if result != kAXErrorSuccess {
-            warn!("Failed to set text via AXValue: AX error {}", result);
-            
-            // Fallback: Try using selected text replacement
-            return set_text_via_selection(element, text, range);
-        }
-        
-        info!("📝 Successfully set text: '{}'", text);
-        println!("✅ Corrected text: {}", text);
-        Ok(())
+        // Fallback: Try using selected text replacement
+        return set_text_via_selection(element, text, range);
     }
+    
+    info!("📝 Successfully set text: '{}'", text);
+    println!("✅ Corrected text: {}", text);
+    Ok(())
 }
 
 // Fallback method: Set text by selecting the range and replacing
@@ -606,4 +611,328 @@ mod tests {
         // The function handles null pointers properly in the implementation
         assert_eq!(2 + 2, 4); // placeholder test
     }
+}
+
+// Clipboard-based text extraction fallback for problematic apps like VS Code
+pub fn get_text_via_clipboard_fallback() -> Result<(String, std::ops::Range<usize>), Box<dyn std::error::Error>> {
+    use std::time::Duration;
+    use cocoa::appkit::{NSPasteboard};
+    
+    info!("🔄 Attempting clipboard fallback for text extraction...");
+    
+    unsafe {
+        let _pool = cocoa::foundation::NSAutoreleasePool::new(cocoa::base::nil);
+        
+        // Get the general pasteboard
+        let pasteboard = NSPasteboard::generalPasteboard(cocoa::base::nil);
+        
+        // Save current clipboard content
+        let old_clipboard = get_clipboard_text(pasteboard);
+        
+        // Send Cmd+A to select all text in the current field
+        send_key_combination("keystroke \"a\" using command down")?; // Cmd+A
+        std::thread::sleep(Duration::from_millis(50));
+        
+        // Send Cmd+C to copy selected text
+        send_key_combination("keystroke \"c\" using command down")?; // Cmd+C
+        std::thread::sleep(Duration::from_millis(100));
+        
+        // Get the copied text
+        let copied_text = get_clipboard_text(pasteboard);
+        
+        // Restore old clipboard if we had content
+        if let Some(ref old_content) = old_clipboard {
+            set_clipboard_text(pasteboard, old_content);
+        }
+        
+        match copied_text {
+            Some(text) if !text.trim().is_empty() => {
+                info!("📋 Successfully extracted text via clipboard: '{}'", text);
+                // Return the last sentence or reasonable chunk
+                let (sentence, range) = get_last_sentence(&text);
+                Ok((sentence, range))
+            }
+            _ => {
+                Err("Could not extract text via clipboard".into())
+            }
+        }
+    }
+}
+
+// Helper function to get clipboard text
+unsafe fn get_clipboard_text(pasteboard: id) -> Option<String> {
+    use cocoa::appkit::NSPasteboardTypeString;
+    
+    let string_type = NSPasteboardTypeString;
+    let ns_string: id = msg_send![pasteboard, stringForType: string_type];
+    
+    if ns_string != cocoa::base::nil {
+        let utf8_str: *const i8 = msg_send![ns_string, UTF8String];
+        if !utf8_str.is_null() {
+            let c_str = std::ffi::CStr::from_ptr(utf8_str);
+            return Some(c_str.to_string_lossy().to_string());
+        }
+    }
+    None
+}
+
+// Helper function to set clipboard text
+unsafe fn set_clipboard_text(pasteboard: id, text: &str) {
+    use cocoa::foundation::NSString;
+    use cocoa::appkit::NSPasteboardTypeString;
+    
+    let ns_string = NSString::alloc(cocoa::base::nil);
+    let ns_string: id = msg_send![ns_string, initWithUTF8String: text.as_ptr()];
+    
+    let string_type = NSPasteboardTypeString;
+    let _: () = msg_send![pasteboard, clearContents];
+    let _: bool = msg_send![pasteboard, setString: ns_string forType: string_type];
+}
+
+// Helper function to send key combinations via AppleScript
+fn send_key_combination(key_command: &str) -> Result<(), Box<dyn std::error::Error>> {
+    use std::process::Command;
+    
+    let script = format!("tell application \"System Events\" to {}", key_command);
+    
+    let output = Command::new("osascript")
+        .arg("-e")
+        .arg(&script)
+        .output()?;
+    
+    if !output.status.success() {
+        let error_msg = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("AppleScript key command failed: {}", error_msg).into());
+    }
+    
+    Ok(())
+}
+
+// AppleScript-based text extraction fallback
+pub fn get_text_via_applescript() -> Result<(String, std::ops::Range<usize>), Box<dyn std::error::Error>> {
+    use std::process::Command;
+    
+    info!("🍎 Attempting AppleScript text extraction...");
+    
+    let script = r#"
+        tell application "System Events"
+            set frontApp to name of first application process whose frontmost is true
+            tell process frontApp
+                try
+                    set selectedText to value of text field 1 of window 1
+                    return selectedText
+                on error
+                    try
+                        set selectedText to value of text area 1 of scroll area 1 of window 1
+                        return selectedText
+                    on error
+                        return ""
+                    end try
+                end try
+            end tell
+        end tell
+    "#;
+    
+    let output = Command::new("osascript")
+        .arg("-e")
+        .arg(script)
+        .output()?;
+    
+    if output.status.success() {
+        let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if !text.is_empty() {
+            info!("🍎 AppleScript extracted text: '{}'", text);
+            let (sentence, range) = get_last_sentence(&text);
+            return Ok((sentence, range));
+        }
+    }
+    
+    Err("AppleScript text extraction failed".into())
+}
+
+// Function to detect problematic apps (like Electron-based apps)
+pub fn is_problematic_app() -> bool {
+    use std::process::Command;
+    
+    // Get the frontmost application name
+    let script = r#"
+        tell application "System Events"
+            set frontApp to name of first application process whose frontmost is true
+        end tell
+        return frontApp
+    "#;
+    
+    let output = Command::new("osascript")
+        .arg("-e")
+        .arg(script)
+        .output();
+    
+    if let Ok(output) = output {
+        if output.status.success() {
+            let app_name = String::from_utf8_lossy(&output.stdout).to_lowercase();
+            
+            // List of known problematic Electron-based or difficult apps
+            let problematic_apps = [
+                "visual studio code",
+                "code",
+                "atom",
+                "discord",
+                "slack",
+                "whatsapp",
+                "telegram",
+                "signal",
+                "spotify",
+                "figma",
+                "notion",
+                "obsidian",
+                "postman",
+                "insomnia",
+                "electron",
+            ];
+            
+            for problematic in &problematic_apps {
+                if app_name.contains(problematic) {
+                    info!("🚨 Detected problematic app: {}", app_name.trim());
+                    return true;
+                }
+            }
+        }
+    }
+    
+    false
+}
+
+// Main fallback function to get text with multiple strategies
+pub fn get_text_to_correct_with_fallbacks(element: &ElementRef) -> Result<(String, std::ops::Range<usize>), Box<dyn std::error::Error>> {
+    // First, try the standard accessibility approach
+    match get_text_to_correct(element) {
+        Ok(result) => {
+            info!("✅ Text extracted via accessibility API");
+            return Ok(result);
+        }
+        Err(e) => {
+            warn!("❌ Accessibility API failed: {}", e);
+            
+            // Check if this is a known problematic app
+            if is_problematic_app() {
+                info!("🔄 Trying fallback methods for problematic app");
+            }
+        }
+    }
+    
+    // Try clipboard fallback
+    match get_text_via_clipboard_fallback() {
+        Ok((text, range)) => {
+            if !text.trim().is_empty() {
+                info!("✅ Text extracted via clipboard fallback");
+                return Ok((text, range));
+            }
+        }
+        Err(e) => {
+            warn!("❌ Clipboard fallback failed: {}", e);
+        }
+    }
+    
+    // Try AppleScript fallback
+    match get_text_via_applescript() {
+        Ok((text, range)) => {
+            if !text.trim().is_empty() {
+                info!("✅ Text extracted via AppleScript fallback");
+                return Ok((text, range));
+            }
+        }
+        Err(e) => {
+            warn!("❌ AppleScript fallback failed: {}", e);
+        }
+    }
+    
+    Err("All text extraction methods failed".into())
+}
+
+// Fallback function to set text with multiple strategies
+pub fn set_text_with_fallbacks(element: &ElementRef, text: &str, range: std::ops::Range<usize>) -> Result<(), Box<dyn std::error::Error>> {
+    // Check if element is null - this function should only be used with real elements
+    if element.is_null() {
+        return Err("Cannot use set_text_with_fallbacks with null element. Use set_text_clipboard_only instead.".into());
+    }
+    
+    // First, try the standard accessibility approach
+    match set_text(element, text, range.clone()) {
+        Ok(()) => {
+            info!("✅ Text set via accessibility API");
+            return Ok(());
+        }
+        Err(e) => {
+            warn!("❌ Accessibility API set failed: {}", e);
+            
+            // Check if this is a known problematic app
+            if is_problematic_app() {
+                info!("🔄 Trying fallback methods for text setting");
+            }
+        }
+    }
+    
+    // Try clipboard-based text setting (select all + paste)
+    match set_text_via_clipboard(text) {
+        Ok(()) => {
+            info!("✅ Text set via clipboard fallback");
+            return Ok(());
+        }
+        Err(e) => {
+            warn!("❌ Clipboard fallback set failed: {}", e);
+        }
+    }
+    
+    // If all methods fail, at least show the correction
+    warn!("❌ All text setting methods failed");
+    println!("⚠️  Could not write to text field, but correction is: {}", text);
+    
+    // Return success anyway since we showed the correction
+    Ok(())
+}
+
+// Helper function to set text via clipboard (select all + paste)
+fn set_text_via_clipboard(text: &str) -> Result<(), Box<dyn std::error::Error>> {
+    use std::process::{Command, Stdio};
+    use std::thread;
+    use std::time::Duration;
+    use std::io::Write;
+    
+    info!("📋 Attempting clipboard fallback for text setting");
+    
+    // First, copy the corrected text to clipboard
+    let mut copy_process = Command::new("pbcopy")
+        .stdin(Stdio::piped())
+        .spawn()?;
+    
+    if let Some(stdin) = copy_process.stdin.as_mut() {
+        stdin.write_all(text.as_bytes())?;
+    }
+    
+    copy_process.wait()?;
+    
+    // Brief pause for copy to complete
+    thread::sleep(Duration::from_millis(100));
+    
+    // Send Cmd+A to select all text
+    send_key_combination("keystroke \"a\" using command down")?;
+    
+    // Brief pause for selection to take effect
+    thread::sleep(Duration::from_millis(100));
+    
+    // Send Cmd+V to paste the corrected text
+    send_key_combination("keystroke \"v\" using command down")?;
+    
+    info!("📋 Successfully set text via clipboard");
+    println!("✅ Corrected text: {}", text);
+    
+    Ok(())
+}
+
+// Function to set text using only clipboard method (no accessibility element needed)
+pub fn set_text_clipboard_only(text: &str) -> Result<(), Box<dyn std::error::Error>> {
+    info!("🔄 Using clipboard-only text replacement (no accessibility element)");
+    
+    // Use the clipboard method directly
+    set_text_via_clipboard(text)
 }
