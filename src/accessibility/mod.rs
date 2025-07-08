@@ -222,8 +222,26 @@ fn get_text_around_cursor(text: &str, cursor_pos: &usize) -> (String, std::ops::
     // Find start of sentence (work backwards from cursor)
     for i in (0..cursor_pos).rev() {
         if i < chars.len() && (chars[i] == '.' || chars[i] == '!' || chars[i] == '?') {
-            start = (i + 1).min(chars.len());
-            break;
+            // If cursor is right after punctuation, include the sentence ending with that punctuation
+            if i + 1 == cursor_pos {
+                // Look for the start of THIS sentence (the one ending with punctuation)
+                for j in (0..i).rev() {
+                    if chars[j] == '.' || chars[j] == '!' || chars[j] == '?' {
+                        start = (j + 1).min(chars.len());
+                        break;
+                    }
+                    // Don't go back more than 200 characters from punctuation
+                    if i - j > 200 {
+                        start = j;
+                        break;
+                    }
+                }
+                break;
+            } else {
+                // Cursor is in the middle of text, start after this punctuation
+                start = (i + 1).min(chars.len());
+                break;
+            }
         }
         // Don't go back more than 200 characters
         if cursor_pos - i > 200 {
@@ -266,15 +284,34 @@ fn get_last_sentence(text: &str) -> (String, std::ops::Range<usize>) {
     let end = chars.len();
     
     // Find the last sentence boundary
-    for i in (0..chars.len()).rev() {
-        if chars[i] == '.' || chars[i] == '!' || chars[i] == '?' {
-            start = (i + 1).min(chars.len());
-            break;
+    // First, check if the text ends with punctuation
+    let ends_with_punctuation = chars.last().map_or(false, |&c| c == '.' || c == '!' || c == '?');
+    
+    if ends_with_punctuation {
+        // If text ends with punctuation, find the start of the last sentence
+        for i in (0..chars.len() - 1).rev() {
+            if chars[i] == '.' || chars[i] == '!' || chars[i] == '?' {
+                start = (i + 1).min(chars.len());
+                break;
+            }
+            // Don't go back more than 300 characters
+            if chars.len() - i > 300 {
+                start = i;
+                break;
+            }
         }
-        // Don't go back more than 300 characters
-        if chars.len() - i > 300 {
-            start = i;
-            break;
+    } else {
+        // If text doesn't end with punctuation, find the last sentence boundary
+        for i in (0..chars.len()).rev() {
+            if chars[i] == '.' || chars[i] == '!' || chars[i] == '?' {
+                start = (i + 1).min(chars.len());
+                break;
+            }
+            // Don't go back more than 300 characters
+            if chars.len() - i > 300 {
+                start = i;
+                break;
+            }
         }
     }
     
@@ -520,6 +557,41 @@ mod tests {
         let text = "First sentence.   Second sentence";
         let range = get_sentence_range(text).unwrap();
         assert_eq!(range, 18..33); // Should skip whitespace
+    }
+
+    #[test]
+    fn test_get_last_sentence_with_punctuation() {
+        // Test when text ends with question mark
+        let text = "First sentence. Are you sure?";
+        let (extracted, _range) = get_last_sentence(text);
+        assert_eq!(extracted, "Are you sure?");
+        
+        // Test when text ends with exclamation
+        let text = "First sentence. This is great!";
+        let (extracted, _range) = get_last_sentence(text);
+        assert_eq!(extracted, "This is great!");
+        
+        // Test when text ends with period
+        let text = "First sentence. This is the last.";
+        let (extracted, _range) = get_last_sentence(text);
+        assert_eq!(extracted, "This is the last.");
+    }
+
+    #[test]
+    fn test_get_text_around_cursor_after_punctuation() {
+        // Test when cursor is right after question mark
+        let text = "I have teh question?";
+        let cursor_pos = 20; // Right after the ?
+        let (extracted, range) = get_text_around_cursor(text, &cursor_pos);
+        assert_eq!(extracted, "I have teh question?");
+        assert_eq!(range, 0..20);
+        
+        // Test when cursor is right after exclamation
+        let text = "This is teh answer!";
+        let cursor_pos = 19; // Right after the !
+        let (extracted, range) = get_text_around_cursor(text, &cursor_pos);
+        assert_eq!(extracted, "This is teh answer!");
+        assert_eq!(range, 0..19);
     }
 
     #[test]
