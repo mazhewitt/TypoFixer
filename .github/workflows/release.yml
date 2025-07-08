@@ -1,0 +1,148 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-and-release:
+    runs-on: macos-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+    
+    - name: Cache cargo registry
+      uses: actions/cache@v3
+      with:
+        path: ~/.cargo/registry
+        key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+    
+    - name: Cache cargo index
+      uses: actions/cache@v3
+      with:
+        path: ~/.cargo/git
+        key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+    
+    - name: Cache target directory
+      uses: actions/cache@v3
+      with:
+        path: target
+        key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+    
+    - name: Build TypoFixer
+      run: cargo build --release
+    
+    - name: Create App Bundle
+      run: |
+        APP_NAME="TypoFixer"
+        APP_BUNDLE="target/release/$APP_NAME.app"
+        BINARY_PATH="target/release/typo-fixer"
+        VERSION=${GITHUB_REF#refs/tags/v}
+        
+        mkdir -p "$APP_BUNDLE/Contents/MacOS"
+        mkdir -p "$APP_BUNDLE/Contents/Resources"
+        cp "$BINARY_PATH" "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
+        
+        cat > "$APP_BUNDLE/Contents/Info.plist" << EOF
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>CFBundleExecutable</key>
+            <string>$APP_NAME</string>
+            <key>CFBundleIdentifier</key>
+            <string>com.typofixer.app</string>
+            <key>CFBundleName</key>
+            <string>$APP_NAME</string>
+            <key>CFBundleDisplayName</key>
+            <string>TypoFixer</string>
+            <key>CFBundleVersion</key>
+            <string>$VERSION</string>
+            <key>CFBundleShortVersionString</key>
+            <string>$VERSION</string>
+            <key>CFBundlePackageType</key>
+            <string>APPL</string>
+            <key>LSUIElement</key>
+            <true/>
+            <key>NSHighResolutionCapable</key>
+            <true/>
+            <key>NSAppleEventsUsageDescription</key>
+            <string>TypoFixer needs to send AppleScript events to interact with other applications for text correction.</string>
+            <key>NSAccessibilityUsageDescription</key>
+            <string>TypoFixer needs accessibility permissions to read and correct text in other applications.</string>
+        </dict>
+        </plist>
+        EOF
+    
+    - name: Create DMG
+      run: |
+        VERSION=${GITHUB_REF#refs/tags/v}
+        APP_NAME="TypoFixer"
+        DMG_NAME="$APP_NAME-v$VERSION"
+        
+        # Create temporary dmg directory
+        DMG_DIR=$(mktemp -d)
+        cp -R "target/release/$APP_NAME.app" "$DMG_DIR/"
+        ln -s /Applications "$DMG_DIR/Applications"
+        
+        # Create DMG
+        hdiutil create -volname "$APP_NAME v$VERSION" -srcfolder "$DMG_DIR" -ov -format UDZO "$DMG_NAME.dmg"
+        rm -rf "$DMG_DIR"
+    
+    - name: Create ZIP
+      run: |
+        VERSION=${GITHUB_REF#refs/tags/v}
+        APP_NAME="TypoFixer"
+        ZIP_NAME="$APP_NAME-v$VERSION"
+        
+        cd target/release
+        zip -r "../../$ZIP_NAME.zip" "$APP_NAME.app"
+        cd ../..
+    
+    - name: Create Release Notes
+      run: |
+        VERSION=${GITHUB_REF#refs/tags/v}
+        cat > RELEASE_NOTES.md << EOF
+        # TypoFixer v$VERSION
+        
+        ## Features
+        - Global hotkey (Cmd+Option+S) for instant text correction
+        - LLM-powered spell and grammar checking via Ollama
+        - Robust fallback methods for compatibility with all macOS applications
+        - Menu bar integration for easy access
+        - Smart text extraction and correction
+        
+        ## Installation
+        1. Download the DMG or ZIP file
+        2. Move TypoFixer.app to Applications
+        3. Grant accessibility permissions when prompted
+        4. Install and run Ollama with a language model
+        
+        ## Requirements
+        - macOS 10.15+
+        - Ollama with language model (recommended: llama3.2:1b)
+        - Accessibility permissions
+        
+        Built on $(date +"%Y-%m-%d")
+        EOF
+    
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      if: startsWith(github.ref, 'refs/tags/')
+      with:
+        files: |
+          TypoFixer-v*.dmg
+          TypoFixer-v*.zip
+        body_path: RELEASE_NOTES.md
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
