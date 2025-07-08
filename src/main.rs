@@ -29,16 +29,22 @@ static CONFIG: Lazy<Arc<RwLock<Config>>> = Lazy::new(|| Arc::new(RwLock::new(Con
 fn handle_hotkey_press() {
     let start = Instant::now();
     
+    println!("🎯 HOTKEY PRESSED! Processing text correction...");
+    info!("🎯 HOTKEY PRESSED! Processing text correction...");
+    
     match process_text_correction() {
         Ok(true) => {
             show_hud("Fixed ✓");
             info!("Text correction successful in {:?}", start.elapsed());
+            println!("✅ Text correction successful!");
         }
         Ok(false) => {
             debug!("No correction needed");
+            println!("ℹ️ No correction needed");
         }
         Err(e) => {
             error!("Text correction failed: {}", e);
+            println!("❌ Text correction failed: {}", e);
             beep();
             log_error(&format!("Text correction failed: {}", e));
         }

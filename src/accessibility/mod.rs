@@ -10,12 +10,7 @@ pub type ElementRef = AXUIElementRef;
 
 pub fn get_focused_element() -> Result<ElementRef, Box<dyn std::error::Error>> {
     unsafe {
-        // Check if we have accessibility permissions
-        if !AXIsProcessTrusted() {
-            return Err("⚠️  Accessibility permissions not granted. Please:\n1. Go to System Preferences > Security & Privacy > Privacy > Accessibility\n2. Add this application\n3. Try again".into());
-        }
-        
-        // Get the system-wide element
+        // Get the system-wide element first
         let system_element = AXUIElementCreateSystemWide();
         if system_element.is_null() {
             return Err("Failed to create system element".into());
@@ -29,6 +24,11 @@ pub fn get_focused_element() -> Result<ElementRef, Box<dyn std::error::Error>> {
             focused_app_attr.as_concrete_TypeRef(),
             &mut focused_app_ref
         );
+        
+        // Check for accessibility permission errors
+        if result == kAXErrorAPIDisabled || result == kAXErrorNotImplemented {
+            return Err("⚠️  Accessibility permissions not granted. Please:\n1. Go to System Preferences > Security & Privacy > Privacy > Accessibility\n2. Add this application\n3. Try again".into());
+        }
         
         if result != kAXErrorSuccess || focused_app_ref.is_null() {
             warn!("Failed to get focused application: AX error {}", result);
