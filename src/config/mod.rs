@@ -1,9 +1,12 @@
 use std::path::PathBuf;
 use std::fs;
+use serde::{Deserialize, Serialize};
+use toml_edit;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Config {
-    pub model_path: PathBuf,
+    // The model_path is no longer needed as we use bundled CoreML models.
+    // We keep the config file for future settings.
     pub config_path: PathBuf,
 }
 
@@ -11,7 +14,6 @@ impl Default for Config {
     fn default() -> Self {
         let home = std::env::var("HOME").unwrap_or_else(|_| "/Users/user".to_string());
         Self {
-            model_path: PathBuf::from(&home).join("Models/llama3-8b-q4.gguf"),
             config_path: PathBuf::from(&home).join("Library/Application Support/TypoFixer/config.toml"),
         }
     }
@@ -26,17 +28,10 @@ impl Config {
             let _ = fs::create_dir_all(parent);
         }
         
-        // Load from file if exists
-        if let Ok(contents) = fs::read_to_string(&config.config_path) {
-            if let Ok(parsed) = contents.parse::<toml_edit::DocumentMut>() {
-                let mut new_config = config.clone();
-                
-                if let Some(model_path) = parsed.get("model_path").and_then(|v| v.as_str()) {
-                    new_config.model_path = PathBuf::from(model_path);
-                }
-                
-                return new_config;
-            }
+        // Config loading is simplified as there are no fields to load yet.
+        // This structure is kept for future expansion.
+        if !config.config_path.exists() {
+            let _ = config.save();
         }
         
         config
@@ -44,21 +39,17 @@ impl Config {
     
     pub fn save(&self) -> Result<(), Box<dyn std::error::Error>> {
         let mut doc = toml_edit::DocumentMut::new();
-        doc["model_path"] = toml_edit::value(self.model_path.to_string_lossy().to_string());
-        
+        // Add a placeholder or comment to indicate the file's purpose.
+        doc.insert("settings", toml_edit::Item::Table(toml_edit::Table::new()));
+        doc["settings"].as_table_mut().unwrap().set_implicit(true);
+        doc.to_string();
+
         if let Some(parent) = self.config_path.parent() {
             fs::create_dir_all(parent)?;
         }
         
-        fs::write(&self.config_path, doc.to_string())?;
+        fs::write(&self.config_path, "# TypoFixer configuration file.\n# Settings will be added here in future versions.\n")?;
         Ok(())
-    }
-    
-    pub fn prompt_for_model_path() -> Option<PathBuf> {
-        // Mock implementation - just return default path for now
-        let default_path = Config::default().model_path;
-        println!("Please create a model file at: {}", default_path.display());
-        Some(default_path)
     }
 }
 
@@ -70,7 +61,6 @@ mod tests {
     #[test]
     fn test_config_default() {
         let config = Config::default();
-        assert!(config.model_path.to_string_lossy().contains("llama3-8b-q4.gguf"));
         assert!(config.config_path.to_string_lossy().contains("config.toml"));
     }
 
@@ -78,11 +68,9 @@ mod tests {
     fn test_config_save_and_load() {
         let temp_dir = TempDir::new().unwrap();
         let config_path = temp_dir.path().join("config.toml");
-        let model_path = temp_dir.path().join("test_model.gguf");
         
         let mut config = Config::default();
         config.config_path = config_path.clone();
-        config.model_path = model_path.clone();
         
         // Test save
         config.save().unwrap();
@@ -90,7 +78,6 @@ mod tests {
         
         // Test load
         let loaded_config = Config::load();
-        // Note: load() creates a default config, so we need to test differently
-        assert!(loaded_config.model_path.to_string_lossy().contains("llama3-8b-q4.gguf"));
+        assert_eq!(loaded_config.config_path, Config::default().config_path);
     }
 }

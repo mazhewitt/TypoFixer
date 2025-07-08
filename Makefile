@@ -41,11 +41,14 @@ install: app ## Install the app to /Applications
 	sudo cp -R target/release/$(APP_NAME).app /Applications/
 	@echo "✅ Installed! Launch from Applications or Spotlight."
 
+setup-model: ## Download and compile the CoreML model
+	@echo "🤖 Setting up CoreML model..."
+	./setup_model.sh
+
 dev-deps: ## Install development dependencies
 	@echo "🔧 Installing development dependencies..."
-	@command -v ollama >/dev/null 2>&1 || { echo "Installing Ollama..."; curl -fsSL https://ollama.ai/install.sh | sh; }
-	@echo "📥 Pulling recommended language model..."
-	ollama pull llama3.2:1b
+	@echo "ℹ️  CoreML model setup is now handled by 'make setup-model'"
+	@echo "📥 Run 'make setup-model' to download and compile the text correction model."
 
 check: ## Check code formatting and linting
 	@echo "🔍 Checking code..."

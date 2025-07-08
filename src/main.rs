@@ -21,12 +21,12 @@ use accessibility::{
     get_text_to_correct_with_fallbacks, get_text_via_clipboard_fallback, 
     get_text_via_applescript, set_text_with_fallbacks, set_text_clipboard_only
 };
-use spell_check::{LlamaModelWrapper, generate_correction};
+use spell_check::{CoreMlCorrector, generate_correction};
 use hotkey::{setup_hotkey, start_hotkey_event_loop};
 use menu_bar::{setup_menu_bar, get_menu_bar};
 
 // Global state
-static LLAMA_MODEL: Lazy<Arc<Mutex<Option<LlamaModelWrapper>>>> = Lazy::new(|| Arc::new(Mutex::new(None)));
+static COREML_CORRECTOR: Lazy<Arc<Mutex<Option<CoreMlCorrector>>>> = Lazy::new(|| Arc::new(Mutex::new(None)));
 static CONFIG: Lazy<Arc<RwLock<Config>>> = Lazy::new(|| Arc::new(RwLock::new(Config::default())));
 
 #[allow(dead_code)]
@@ -112,8 +112,12 @@ fn process_text_correction() -> Result<bool, Box<dyn std::error::Error>> {
     
     // Generate correction
     let corrected = {
-        let mut model_guard = LLAMA_MODEL.lock().unwrap();
-        generate_correction(&text, &mut model_guard)?
+        let mut corrector_guard = COREML_CORRECTOR.lock().unwrap();
+        if let Some(ref mut corrector) = *corrector_guard {
+            generate_correction(&text, corrector)?
+        } else {
+            return Err("Corrector model not loaded".into());
+        }
     };
     
     info!("Original text: '{}' (len: {})", text, text.len());
@@ -189,15 +193,18 @@ fn log_error(message: &str) {
 
 // This function is no longer needed - menu bar functionality is now in menu_bar.rs
 
-fn load_llama_model() -> Result<(), Box<dyn std::error::Error>> {
-    let config = CONFIG.read().unwrap();
+fn load_coreml_model() -> Result<(), Box<dyn std::error::Error>> {
+    info!("Loading CoreML text correction model...");
     
-    info!("Loading text correction model...");
+    // These paths are based on the download instructions.
+    // The user is expected to have these files in the project root.
+    let model_path = "ModelsCompiled/t5_tiny_grammar.mlmodelc";
+    let tokenizer_path = "Models/tokenizer.json";
+
+    let corrector = CoreMlCorrector::new(model_path, tokenizer_path)?;
+    *COREML_CORRECTOR.lock().unwrap() = Some(corrector);
     
-    let model = LlamaModelWrapper::new(&config.model_path)?;
-    *LLAMA_MODEL.lock().unwrap() = Some(model);
-    
-    info!("Model loaded successfully");
+    info!("CoreML Model loaded successfully");
     Ok(())
 }
 
@@ -211,8 +218,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     // Load model in background
     thread::spawn(|| {
-        if let Err(e) = load_llama_model() {
-            error!("Failed to load model: {}", e);
+        if let Err(e) = load_coreml_model() {
+            error!("Failed to load CoreML model: {}", e);
+            log_error(&format!("Failed to load CoreML model: {}. Make sure you have followed the download instructions.", e));
         }
     });
     
@@ -244,59 +252,33 @@ mod tests {
     use std::path::PathBuf;
     use tempfile::TempDir;
 
-    fn create_temp_model_file() -> (TempDir, PathBuf) {
-        let temp_dir = TempDir::new().unwrap();
-        let model_path = temp_dir.path().join("test_model.gguf");
-        fs::write(&model_path, "mock model content").unwrap();
-        (temp_dir, model_path)
-    }
+    // Note: Most tests for this file are difficult to run in a CI environment
+    // because they require accessibility permissions and a running macOS GUI.
+    // The most critical logic is now in the respective modules.
 
     #[test]
-    fn test_process_text_correction_secure_field() {
-        // Set up a model first
-        let (_temp_dir, model_path) = create_temp_model_file();
-        let model = LlamaModelWrapper::new(&model_path).unwrap();
-        *LLAMA_MODEL.lock().unwrap() = Some(model);
-        
-        let result = process_text_correction();
-        // This will fail without accessibility permissions or focused application
+    fn test_load_coreml_model_failure() {
+        // This test assumes model files are not present at these dummy paths.
+        let result = load_coreml_model();
         assert!(result.is_err());
-        // The error could be various things depending on the test environment
-        let error_msg = result.unwrap_err().to_string();
-        assert!(error_msg.contains("Accessibility permissions not granted") || 
-                error_msg.contains("No focused application found") ||
-                error_msg.contains("Failed to get focused application"));
     }
 
     #[test]
-    fn test_load_llama_model_missing_file() {
-        // Set up a config with a non-existent model path
-        let temp_dir = TempDir::new().unwrap();
-        let missing_model_path = temp_dir.path().join("missing_model.gguf");
+    fn test_process_text_correction_no_model() {
+        // Ensure no model is loaded
+        *COREML_CORRECTOR.lock().unwrap() = None;
         
-        let mut config = Config::default();
-        config.model_path = missing_model_path;
-        *CONFIG.write().unwrap() = config;
-        
-        let result = load_llama_model();
-        // Model loading should succeed even without a file now
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_load_llama_model_success() {
-        let (_temp_dir, model_path) = create_temp_model_file();
-        
-        let mut config = Config::default();
-        config.model_path = model_path;
-        *CONFIG.write().unwrap() = config;
-        
-        let result = load_llama_model();
-        assert!(result.is_ok());
-        
-        // Verify model was loaded into global state
-        let model_guard = LLAMA_MODEL.lock().unwrap();
-        assert!(model_guard.is_some());
+        // This test will fail because it can't get text, but we can check the error.
+        // If a model were loaded, it would fail with "Corrector model not loaded".
+        let result = process_text_correction();
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        // In a real run, it would be a text extraction error.
+        // If text could be extracted, it would be the "not loaded" error.
+        assert!(
+            err_msg.contains("All text extraction methods failed") || 
+            err_msg.contains("Corrector model not loaded")
+        );
     }
 
     #[test]

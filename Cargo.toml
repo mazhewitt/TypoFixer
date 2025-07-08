@@ -17,14 +17,13 @@ toml_edit = { version = "0.22.27", features = ["serde"] }
 tracing = "0.1.41"
 tracing-subscriber = "0.3"
 chrono = "0.4.41"
-# Ollama integration for LLM
-reqwest = { version = "0.11", features = ["json"] }
-tokio = { version = "1.0", features = ["full"] }
+# Simple text correction
+anyhow = "1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
 [dev-dependencies]
-tempfile = "3.20.0"
+tempfile = "3.10.1"
 
 [profile.release]
 opt-level = 3
@@ -34,3 +33,7 @@ lto = true
 [[bin]]
 name = "typo-fixer"
 path = "src/main.rs"
+
+[[bin]]
+name = "test_functionality"
+path = "test_functionality.rs"
