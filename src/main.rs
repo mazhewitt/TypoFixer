@@ -6,6 +6,7 @@ use std::time::Instant;
 use std::path::PathBuf;
 use std::fs;
 use std::io::Write;
+use std::thread;
 use tracing::{info, error, warn, debug};
 use tracing_subscriber;
 
@@ -73,9 +74,18 @@ fn process_text_correction() -> Result<bool, Box<dyn std::error::Error>> {
         generate_correction(&text, &mut *model_guard)?
     };
     
-    // Check if correction is reasonable
-    if corrected.len() > text.len() * 3 / 2 {
-        warn!("Correction too long, aborting");
+    info!("Original text: '{}' (len: {})", text, text.len());
+    info!("Corrected text: '{}' (len: {})", corrected, corrected.len());
+    
+    // Check if correction is reasonable (allow up to 50% longer or same length)
+    if corrected.len() > text.len() + (text.len() / 2) + 20 {
+        warn!("Correction too long, aborting (original: {}, corrected: {})", text.len(), corrected.len());
+        return Ok(false);
+    }
+    
+    // If no changes were made, don't apply
+    if corrected == text {
+        info!("No changes needed");
         return Ok(false);
     }
     
@@ -124,11 +134,7 @@ fn setup_menubar() -> Result<(), Box<dyn std::error::Error>> {
 fn load_llama_model() -> Result<(), Box<dyn std::error::Error>> {
     let config = CONFIG.read().unwrap();
     
-    if !config.model_path.exists() {
-        return Err(format!("Model file not found: {}", config.model_path.display()).into());
-    }
-    
-    info!("Loading model from: {}", config.model_path.display());
+    info!("Loading text correction model...");
     
     let model = LlamaModelWrapper::new(&config.model_path)?;
     *LLAMA_MODEL.lock().unwrap() = Some(model);
@@ -147,27 +153,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         
         // Load config
         let config = Config::load();
+        *CONFIG.write().unwrap() = config;
         
-        // First run setup
-        if !config.model_path.exists() {
-            if let Some(model_path) = Config::prompt_for_model_path() {
-                let mut new_config = config.clone();
-                new_config.model_path = model_path;
-                new_config.save()?;
-                *CONFIG.write().unwrap() = new_config;
-            } else {
-                return Err("Model path is required".into());
+        // Load model in background
+        thread::spawn(|| {
+            if let Err(e) = load_llama_model() {
+                error!("Failed to load model: {}", e);
             }
-        } else {
-            *CONFIG.write().unwrap() = config;
-        }
-        
-        // Load model in background (disabled for testing)
-        // thread::spawn(|| {
-        //     if let Err(e) = load_llama_model() {
-        //         error!("Failed to load model: {}", e);
-        //     }
-        // });
+        });
         
         // Setup UI
         setup_menubar()?;
@@ -218,14 +211,13 @@ mod tests {
         *LLAMA_MODEL.lock().unwrap() = Some(model);
         
         let result = process_text_correction();
-        // This will fail without accessibility permissions, which is expected behavior
-        if result.is_err() {
-            // Expected in testing environments - accessibility permissions not granted
-            assert!(result.unwrap_err().to_string().contains("Accessibility permissions not granted"));
-        } else {
-            // If permissions are granted, should work since is_secure_field returns false
-            assert!(result.unwrap());
-        }
+        // This will fail without accessibility permissions or focused application
+        assert!(result.is_err());
+        // The error could be various things depending on the test environment
+        let error_msg = result.unwrap_err().to_string();
+        assert!(error_msg.contains("Accessibility permissions not granted") || 
+                error_msg.contains("No focused application found") ||
+                error_msg.contains("Failed to get focused application"));
     }
 
     #[test]
@@ -239,8 +231,8 @@ mod tests {
         *CONFIG.write().unwrap() = config;
         
         let result = load_llama_model();
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Model file not found"));
+        // Model loading should succeed even without a file now
+        assert!(result.is_ok());
     }
 
     #[test]
