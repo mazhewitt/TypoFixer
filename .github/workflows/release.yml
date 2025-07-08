@@ -50,10 +50,12 @@ jobs:
     - name: Create App Bundle
       run: |
         set -x # Enable verbose logging
-        VERSION=${GITHUB_REF#refs/tags/v}
+        RAW_VERSION=${GITHUB_REF#refs/tags/v}
+        VERSION=$(echo "$RAW_VERSION" | sed 's#[/-]#-#g')
         echo "🚀 Starting app bundle creation with version: $VERSION"
         echo "GITHUB_REF: $GITHUB_REF"
-        echo "Extracted VERSION: $VERSION"
+        echo "Raw VERSION: $RAW_VERSION"
+        echo "Sanitized VERSION: $VERSION"
         SKIP_BUILD=true VERSION=$VERSION ./build.sh
         echo "📦 Build script completed with exit code: $?"
     
@@ -73,7 +75,8 @@ jobs:
     - name: Create DMG
       run: |
         set -x # Enable verbose logging
-        VERSION=${GITHUB_REF#refs/tags/v}
+        RAW_VERSION=${GITHUB_REF#refs/tags/v}
+        VERSION=$(echo "$RAW_VERSION" | sed 's#[/-]#-#g')
         APP_NAME="TypoFixer"
         DMG_NAME="$APP_NAME-v$VERSION"
         APP_BUNDLE_PATH="target/release/$APP_NAME.app"
@@ -110,7 +113,8 @@ jobs:
     - name: Create ZIP
       run: |
         set -x # Enable verbose logging
-        VERSION=${GITHUB_REF#refs/tags/v}
+        RAW_VERSION=${GITHUB_REF#refs/tags/v}
+        VERSION=$(echo "$RAW_VERSION" | sed 's#[/-]#-#g')
         APP_NAME="TypoFixer"
         ZIP_NAME="$APP_NAME-v$VERSION"
         APP_BUNDLE_PATH="target/release/$APP_NAME.app"
@@ -135,7 +139,8 @@ jobs:
     
     - name: Create Release Notes
       run: |
-        VERSION=${GITHUB_REF#refs/tags/v}
+        RAW_VERSION=${GITHUB_REF#refs/tags/v}
+        VERSION=$(echo "$RAW_VERSION" | sed 's#[/-]#-#g')
         cat > RELEASE_NOTES.md << EOF
         # TypoFixer v$VERSION
         
