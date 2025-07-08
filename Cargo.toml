@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+# Use cocoa for now - it's more mature for this use case
 cocoa = "0.26.1"
 objc = "0.2.7"
 core-foundation = "0.10.1"

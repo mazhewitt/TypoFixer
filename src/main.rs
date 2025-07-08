@@ -1,5 +1,3 @@
-use cocoa::appkit::{NSApplicationActivationPolicyAccessory, NSApp};
-use objc::{msg_send, sel, sel_impl};
 use once_cell::sync::Lazy;
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::Instant;
@@ -16,11 +14,13 @@ mod accessibility;
 mod spell_check;
 mod hotkey;
 mod error;
+mod menu_bar;
 
 use config::Config;
 use accessibility::{get_focused_element, is_secure_field, get_text_to_correct, set_text};
 use spell_check::{LlamaModelWrapper, generate_correction};
 use hotkey::{setup_hotkey, start_hotkey_event_loop};
+use menu_bar::{setup_menu_bar, get_menu_bar};
 
 // Global state
 static LLAMA_MODEL: Lazy<Arc<Mutex<Option<LlamaModelWrapper>>>> = Lazy::new(|| Arc::new(Mutex::new(None)));
@@ -125,11 +125,7 @@ fn log_error(message: &str) {
     }
 }
 
-fn setup_menubar() -> Result<(), Box<dyn std::error::Error>> {
-    // Mock implementation - just log
-    info!("Would setup menubar here");
-    Ok(())
-}
+// This function is no longer needed - menu bar functionality is now in menu_bar.rs
 
 fn load_llama_model() -> Result<(), Box<dyn std::error::Error>> {
     let config = CONFIG.read().unwrap();
@@ -147,44 +143,34 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize logging
     tracing_subscriber::fmt::init();
     
-    unsafe {
-        let app = NSApp();
-        let _: () = msg_send![app, setActivationPolicy: NSApplicationActivationPolicyAccessory];
-        
-        // Load config
-        let config = Config::load();
-        *CONFIG.write().unwrap() = config;
-        
-        // Load model in background
-        thread::spawn(|| {
-            if let Err(e) = load_llama_model() {
-                error!("Failed to load model: {}", e);
-            }
-        });
-        
-        // Setup UI
-        setup_menubar()?;
-        
-        // Setup hotkey
-        setup_hotkey()?;
-        
-        // Start hotkey event loop
+    // Load config
+    let config = Config::load();
+    *CONFIG.write().unwrap() = config;
+    
+    // Load model in background
+    thread::spawn(|| {
+        if let Err(e) = load_llama_model() {
+            error!("Failed to load model: {}", e);
+        }
+    });
+    
+    // Setup menu bar (this also configures the app as accessory)
+    setup_menu_bar()?;
+    
+    // Setup hotkey
+    setup_hotkey()?;
+    
+    // Start hotkey event loop in background
+    thread::spawn(|| {
         start_hotkey_event_loop(handle_hotkey_press);
-        
-        // Test accessibility permissions (this will trigger the permission dialog)
-        let _ = get_focused_element();
-        
-        info!("TypoFixer started - Press ⌘⌥S to fix typos");
-        
-        // Test the spell checker functionality once at startup
-        info!("Testing spell checker functionality...");
-        handle_hotkey_press();
-        
-        info!("🚀 TypoFixer is ready! Press ⌘⌥S to fix typos in any text field.");
-        
-        // Run event loop
-        let _: () = msg_send![app, run];
-    }
+    });
+    
+    info!("TypoFixer started - Press ⌘⌥S to fix typos");
+    info!("🚀 TypoFixer is ready! Press ⌘⌥S to fix typos in any text field.");
+    
+    // Run the menu bar event loop (this will block until the app terminates)
+    let menu_bar = get_menu_bar()?;
+    menu_bar.run_event_loop();
     
     Ok(())
 }
