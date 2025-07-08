@@ -3,7 +3,10 @@
 # Build script for TypoFixer
 set -e
 
-echo "Building TypoFixer..."
+echo "🚀 Building TypoFixer..."
+echo "Working directory: $(pwd)"
+echo "SKIP_BUILD: ${SKIP_BUILD:-false}"
+echo "VERSION: ${VERSION:-1.0.0}"
 
 APP_NAME="TypoFixer"
 
@@ -93,6 +96,8 @@ else
 fi
 
 echo "Build complete! App bundle created at: $APP_BUNDLE"
+echo "📦 App bundle contents:"
+ls -la "$APP_BUNDLE"
 echo ""
 echo "To run the app:"
 echo "  open \"$APP_BUNDLE\""

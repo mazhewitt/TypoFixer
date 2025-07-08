@@ -50,7 +50,24 @@ jobs:
     - name: Create App Bundle
       run: |
         VERSION=${GITHUB_REF#refs/tags/v}
+        echo "🚀 Starting app bundle creation with version: $VERSION"
+        echo "GITHUB_REF: $GITHUB_REF"
+        echo "Extracted VERSION: $VERSION"
         SKIP_BUILD=true VERSION=$VERSION ./build.sh
+        echo "📦 Build script completed with exit code: $?"
+    
+    - name: Debug - Check app bundle creation
+      run: |
+        echo "Checking if app bundle was created..."
+        ls -la target/release/
+        if [ -d "target/release/TypoFixer.app" ]; then
+          echo "✅ App bundle exists"
+          ls -la target/release/TypoFixer.app/
+          ls -la target/release/TypoFixer.app/Contents/
+        else
+          echo "❌ App bundle NOT found"
+          exit 1
+        fi
     
     - name: Create DMG
       run: |
@@ -59,21 +76,49 @@ jobs:
         DMG_NAME="$APP_NAME-v$VERSION"
         APP_BUNDLE="target/release/$APP_NAME.app"
         
+        echo "Creating DMG for version: $VERSION"
+        echo "Looking for app bundle at: $APP_BUNDLE"
+        
         # Check if app bundle exists
         if [ ! -d "$APP_BUNDLE" ]; then
-          echo "Error: App bundle not found at $APP_BUNDLE"
+          echo "❌ Error: App bundle not found at $APP_BUNDLE"
+          echo "Contents of target/release/:"
           ls -la target/release/
+          echo "Contents of current directory:"
+          ls -la
           exit 1
         fi
         
+        echo "✅ App bundle found, creating DMG..."
+        
         # Create temporary dmg directory
         DMG_DIR=$(mktemp -d)
+        echo "Temporary DMG directory: $DMG_DIR"
+        
+        # Copy app bundle
+        echo "Copying app bundle to temporary directory..."
         cp -R "$APP_BUNDLE" "$DMG_DIR/"
+        ls -la "$DMG_DIR/"
+        
+        # Create Applications symlink
+        echo "Creating Applications symlink..."
         ln -s /Applications "$DMG_DIR/Applications"
         
         # Create DMG
+        echo "Creating DMG file: $DMG_NAME.dmg"
         hdiutil create -volname "$APP_NAME v$VERSION" -srcfolder "$DMG_DIR" -ov -format UDZO "$DMG_NAME.dmg"
+        
+        # Cleanup
         rm -rf "$DMG_DIR"
+        
+        # Verify DMG was created
+        if [ -f "$DMG_NAME.dmg" ]; then
+          echo "✅ DMG created successfully: $DMG_NAME.dmg"
+          ls -la "$DMG_NAME.dmg"
+        else
+          echo "❌ DMG creation failed"
+          exit 1
+        fi
     
     - name: Create ZIP
       run: |
@@ -82,16 +127,31 @@ jobs:
         ZIP_NAME="$APP_NAME-v$VERSION"
         APP_BUNDLE="target/release/$APP_NAME.app"
         
+        echo "Creating ZIP for version: $VERSION"
+        echo "Looking for app bundle at: $APP_BUNDLE"
+        
         # Check if app bundle exists
         if [ ! -d "$APP_BUNDLE" ]; then
-          echo "Error: App bundle not found at $APP_BUNDLE"
+          echo "❌ Error: App bundle not found at $APP_BUNDLE"
+          echo "Contents of target/release/:"
           ls -la target/release/
           exit 1
         fi
         
+        echo "✅ App bundle found, creating ZIP..."
+        
         cd target/release
         zip -r "../../$ZIP_NAME.zip" "$APP_NAME.app"
         cd ../..
+        
+        # Verify ZIP was created
+        if [ -f "$ZIP_NAME.zip" ]; then
+          echo "✅ ZIP created successfully: $ZIP_NAME.zip"
+          ls -la "$ZIP_NAME.zip"
+        else
+          echo "❌ ZIP creation failed"
+          exit 1
+        fi
     
     - name: Create Release Notes
       run: |
