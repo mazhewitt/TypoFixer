@@ -1,102 +1,206 @@
-# TypoFixer
+# TypoFixer 🔧
 
-A macOS native menubar app that corrects typos in text fields using a local LLM.
+**Intelligent macOS Text Correction with LLM-Powered Spell & Grammar Checking**
 
-## Features
+A powerful macOS application that provides instant, context-aware text correction using local language models. With robust fallback mechanisms, it works seamlessly across all macOS applications, including challenging Electron-based apps like VS Code.
+
+## ✨ Features
 
 - **Global hotkey**: Press `⌘⌥S` (Command + Option + S) to fix typos in any text field
-- **Local LLM**: Uses your own quantized model file for privacy
-- **Smart selection**: Automatically extends selection to sentence boundaries
-- **Accessibility integration**: Works with any standard text field
-- **Lightweight**: Runs in the menubar without cluttering your Dock
+- **LLM-powered correction**: Uses Ollama with local language models for intelligent spell and grammar checking
+- **Universal compatibility**: Works with native macOS apps and Electron-based applications (VS Code, Discord, etc.)
+- **Smart text extraction**: Automatically detects and extracts relevant text context for correction
+- **Robust fallback methods**: Accessibility API with clipboard and AppleScript fallbacks
+- **Secure field detection**: Automatically skips password fields for security
+- **Menu bar integration**: Convenient access from the macOS menu bar
+
+## 🚨 **IMPORTANT: Ollama Required**
+
+**TypoFixer requires Ollama to be installed and running with a language model.**
+
+### Quick Ollama Setup:
+```bash
+# 1. Install Ollama
+curl -fsSL https://ollama.ai/install.sh | sh
+
+# 2. Download a language model (recommended: llama3.2:1b for speed)
+ollama pull llama3.2:1b
+
+# 3. Start Ollama (keep this running)
+ollama serve
+```
 
 ## Prerequisites
 
-- macOS 10.15 or later
-- Rust toolchain with `cargo-zigbuild`
-- A quantized LLM model file (e.g., `llama3-8b-q4.gguf`)
+- **macOS 10.15+** (Intel or Apple Silicon)
+- **Ollama installed and running** (see above)
+- **Language model downloaded** (e.g., `llama3.2:1b`)
+- **Accessibility permissions** (granted during setup)
 
-## Installation
+## 📦 Installation
 
-1. **Install Rust and dependencies**:
+### Option 1: Download Release (Recommended for Users)
+
+1. **Install Ollama first**:
    ```bash
-   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-   cargo install cargo-zigbuild
+   curl -fsSL https://ollama.ai/install.sh | sh
+   ollama pull llama3.2:1b
    ```
 
-2. **Clone and build**:
+2. **Download TypoFixer**:
+   - Get the latest `TypoFixer-v1.0.0.dmg` from [Releases](https://github.com/yourusername/typofixer/releases)
+   - Open the DMG and drag TypoFixer to Applications
+   - Launch TypoFixer from Applications or Spotlight
+
+### Option 2: Build from Source (For Developers)
+
+1. **Install Ollama** (see above)
+
+2. **Install Rust**:
+   ```bash
+   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+   ```
+
+3. **Clone and build**:
    ```bash
    git clone <repository-url>
    cd typo-fixer
-   ./build.sh
+   make install
    ```
 
-3. **Sign the app** (optional but recommended):
-   ```bash
-   export DEVELOPER_ID="Developer ID Application: Your Name (XXXXXXXXXX)"
-   ./build.sh
-   ```
+## ⚙️ Setup
 
-## Setup
-
-1. **First run**: Launch the app and it will prompt you for the path to your model file
-   - Default location: `~/Models/llama3-8b-q4.gguf`
-   - The app will create a config file at `~/Library/Application Support/TypoFixer/config.toml`
-
-2. **Grant Accessibility permissions**:
-   - Open **System Preferences** → **Security & Privacy** → **Privacy** → **Accessibility**
-   - Click the lock icon and authenticate
-   - Click the "+" button and add TypoFixer.app
-   - Ensure the checkbox is checked
-
-## Usage
-
-1. **Start the app**: Double-click `TypoFixer.app` or run from the command line
-2. **Fix typos**: 
-   - Place cursor in any text field
-   - Press `⌘⌥S` to correct the current sentence
-   - A "Fixed ✓" notification will appear on success
-
-## How it Works
-
-- **Text Selection**: If no text is selected, the app extends backwards to the previous sentence boundary (`.`, `!`, `?`) up to 300 characters
-- **LLM Processing**: Sends text to your local model with the prompt: *"Correct any spelling mistakes in the following sentence without re-phrasing: «sentence»"*
-- **Safety**: Aborts if the corrected text is more than 1.5× the original length
-- **Timeout**: Processing times out after 300ms to stay responsive
-
-## Configuration
-
-The app stores its configuration in `~/Library/Application Support/TypoFixer/config.toml`:
-
-```toml
-model_path = "/Users/username/Models/llama3-8b-q4.gguf"
-```
-
-## Logs
-
-Error logs are written to `~/Library/Logs/TypoFixer.log` for debugging.
-
-## Building from Source
-
+### 1. **Ensure Ollama is Running**
 ```bash
-# Install dependencies
-cargo install cargo-zigbuild
-
-# Build universal binary
-cargo zigbuild --release --target universal2-apple-darwin
-
-# Create signed app bundle
-./build.sh
+# Start Ollama (keep this running in background)
+ollama serve
 ```
 
-## Troubleshooting
+### 2. **Grant Accessibility Permissions**
+- Go to **System Preferences** → **Security & Privacy** → **Privacy** → **Accessibility**
+- Click the lock icon and authenticate
+- Add TypoFixer and enable it
 
-- **"AccessibilityPermissionDenied"**: Grant Accessibility permissions in System Preferences
-- **"Model not found"**: Ensure your model file exists at the configured path
-- **No response**: Check that the model file is compatible with llama.cpp
-- **Hotkey not working**: Verify no other app is using `⌘⌥S` hotkey combination
+### 3. **Launch TypoFixer**
+- TypoFixer will appear in your menu bar as ⌨️
+- Ready to use! Press `⌘⌥S` in any text field
 
-## Security Notes
+## 🎮 Usage
+
+**Prerequisites: Make sure Ollama is running!**
+```bash
+ollama serve  # Keep this running in a terminal
+```
+
+1. **Position your cursor** in any text field (VS Code, TextEdit, browser, etc.)
+2. **Press `⌘⌥S`** (Command + Option + S) to trigger correction
+3. **Watch the magic** - your text gets intelligently corrected!
+
+### Example Corrections:
+- `"I recieve teh mesage"` → `"I received the message"`
+- `"Their going to there house"` → `"They're going to their house"`
+- `"Its a beautifull day"` → `"It's a beautiful day"`
+
+## 🧪 Tested Applications
+
+### ✅ Fully Supported
+- **Development**: VS Code, Xcode, Terminal, iTerm2
+- **Communication**: Mail, Messages, Discord, Slack, Telegram
+- **Productivity**: Notes, TextEdit, Pages, Notion, Obsidian
+- **Browsers**: Safari, Chrome, Firefox (text areas)
+
+### 🔄 Automatic Fallback
+Some Electron-based apps automatically use clipboard fallback (this is normal):
+- VS Code, Atom, Discord, Slack, WhatsApp, Spotify
+
+## 🔧 How It Works
+
+1. **Text Detection**: Uses macOS accessibility APIs to find the focused text field
+2. **Smart Extraction**: Intelligently extracts the current sentence or relevant text chunk
+3. **LLM Processing**: Sends text to Ollama for intelligent correction
+4. **Robust Replacement**: Uses accessibility API or falls back to clipboard method
+5. **Fallback Methods**: Clipboard and AppleScript fallbacks for problematic apps
+
+## ⚙️ Configuration
+
+TypoFixer automatically detects and uses:
+- **Ollama endpoint**: `http://localhost:11434` (default)
+- **Model selection**: Uses the first available model from `ollama list`
+- **Hotkey**: `Cmd+Option+S` (customizable in future versions)
+
+## 🐛 Troubleshooting
+
+### Common Issues
+
+**❌ "No model found" or corrections not working**
+```bash
+# Check if Ollama is running
+curl http://localhost:11434/api/version
+
+# Install a model if needed
+ollama pull llama3.2:1b
+
+# Start Ollama
+ollama serve
+```
+
+**❌ "Accessibility permissions not granted"**
+- Go to System Preferences → Security & Privacy → Privacy → Accessibility
+- Add TypoFixer and enable it
+- Restart TypoFixer after granting permissions
+
+**❌ Text not being corrected in some apps**
+- This is normal for Electron-based apps (VS Code, Discord, etc.)
+- TypoFixer automatically uses clipboard fallback method
+- Make sure the text field is focused before pressing `⌘⌥S`
+
+**❌ Hotkey not working**
+- Verify no other app is using `⌘⌥S` hotkey combination
+- Check that TypoFixer is running (should see ⌨️ in menu bar)
+- Try restarting TypoFixer
+
+### Debug Mode
+Run from terminal to see detailed logs:
+```bash
+./TypoFixer.app/Contents/MacOS/TypoFixer
+```
+
+## 🛠️ Development
+
+### Quick Commands
+```bash
+make build       # Build the application
+make app         # Create app bundle  
+make package     # Create all distribution packages
+make install     # Install to /Applications
+make test        # Run tests
+```
+
+### Building from Source
+```bash
+# Install Rust
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+
+# Clone and build
+git clone <repository-url>
+cd typo-fixer
+make install
+```
+
+## 🔒 Privacy & Security
+
+- **Local Processing**: All text correction happens locally via Ollama
+- **No Data Collection**: Your text never leaves your machine  
+- **Secure Fields**: Password fields are automatically skipped
+- **Accessibility**: Only reads/writes when explicitly triggered
+
+## 📄 License
+
+MIT License - see LICENSE file for details.
+
+---
+
+**Made with ❤️ for the macOS community**
 
 - All text processing happens locally on your machine
 - The app requires Accessibility permissions to read/write text fields
