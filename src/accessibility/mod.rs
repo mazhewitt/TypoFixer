@@ -386,51 +386,57 @@ pub fn set_text(element: &ElementRef, text: &str, range: std::ops::Range<usize>)
 
 // Fallback method: Set text by selecting the range and replacing
 fn set_text_via_selection(element: &ElementRef, text: &str, _range: std::ops::Range<usize>) -> Result<(), Box<dyn std::error::Error>> {
-    unsafe {
-        // Try to select the range first
-        let _selected_range_attr = CFString::new("AXSelectedTextRange");
-        
-        // Create a range value (this is complex in Core Foundation, simplified here)
-        // For now, let's try a different approach: select all and replace
-        
-        // First, try to select all text
-        let value_attr = CFString::new("AXValue");
-        let mut current_value_ref: CFTypeRef = std::ptr::null();
-        let result = AXUIElementCopyAttributeValue(
+    // Try to select the range first
+    let _selected_range_attr = CFString::new("AXSelectedTextRange");
+    
+    // Create a range value (this is complex in Core Foundation, simplified here)
+    // For now, let's try a different approach: select all and replace
+    
+    // First, try to select all text
+    let value_attr = CFString::new("AXValue");
+    let mut current_value_ref: CFTypeRef = std::ptr::null();
+    
+    // First unsafe operation: FFI call to get current value
+    let result = unsafe {
+        AXUIElementCopyAttributeValue(
             *element,
             value_attr.as_concrete_TypeRef(),
             &mut current_value_ref
-        );
+        )
+    };
+    
+    if result == kAXErrorSuccess && !current_value_ref.is_null() {
+        // Second unsafe operation: wrapping raw pointer from FFI
+        let current_cfstring = unsafe { CFString::wrap_under_get_rule(current_value_ref as CFStringRef) };
+        let _current_text = current_cfstring.to_string();
         
-        if result == kAXErrorSuccess && !current_value_ref.is_null() {
-            let current_cfstring = CFString::wrap_under_get_rule(current_value_ref as CFStringRef);
-            let _current_text = current_cfstring.to_string();
-            
-            // Try to set selected text directly
-            let selected_text_attr = CFString::new("AXSelectedText");
-            let new_text_cfstring = CFString::new(text);
-            
-            let result = AXUIElementSetAttributeValue(
+        // Try to set selected text directly
+        let selected_text_attr = CFString::new("AXSelectedText");
+        let new_text_cfstring = CFString::new(text);
+        
+        // Third unsafe operation: FFI call to set selected text
+        let result = unsafe {
+            AXUIElementSetAttributeValue(
                 *element,
                 selected_text_attr.as_concrete_TypeRef(),
                 new_text_cfstring.as_CFTypeRef()
-            );
-            
-            if result == kAXErrorSuccess {
-                info!("📝 Set text via AXSelectedText: '{}'", text);
-                println!("✅ Corrected text: {}", text);
-                return Ok(());
-            }
+            )
+        };
+        
+        if result == kAXErrorSuccess {
+            info!("📝 Set text via AXSelectedText: '{}'", text);
+            println!("✅ Corrected text: {}", text);
+            return Ok(());
         }
-        
-        // If all else fails, show what we would have set
-        warn!("Could not set text via accessibility API");
-        info!("📝 Would set text: '{}'", text);
-        println!("⚠️  Could not write to text field, but correction is: {}", text);
-        
-        // Return success anyway since we showed the correction
-        Ok(())
     }
+    
+    // If all else fails, show what we would have set
+    warn!("Could not set text via accessibility API");
+    info!("📝 Would set text: '{}'", text);
+    println!("⚠️  Could not write to text field, but correction is: {}", text);
+    
+    // Return success anyway since we showed the correction
+    Ok(())
 }
 
 pub fn get_sentence_range(text: &str) -> Result<std::ops::Range<usize>, Box<dyn std::error::Error>> {
