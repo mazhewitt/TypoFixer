@@ -49,6 +49,7 @@ jobs:
     
     - name: Create App Bundle
       run: |
+        set -x # Enable verbose logging
         VERSION=${GITHUB_REF#refs/tags/v}
         echo "🚀 Starting app bundle creation with version: $VERSION"
         echo "GITHUB_REF: $GITHUB_REF"
@@ -71,83 +72,62 @@ jobs:
     
     - name: Create DMG
       run: |
+        set -x # Enable verbose logging
         VERSION=${GITHUB_REF#refs/tags/v}
         APP_NAME="TypoFixer"
         DMG_NAME="$APP_NAME-v$VERSION"
-        APP_BUNDLE="target/release/$APP_NAME.app"
-        
+        APP_BUNDLE_PATH="target/release/$APP_NAME.app"
+        STAGING_DIR="dmg-staging"
+
         echo "Creating DMG for version: $VERSION"
-        echo "Looking for app bundle at: $APP_BUNDLE"
         
-        # Check if app bundle exists
-        if [ ! -d "$APP_BUNDLE" ]; then
-          echo "❌ Error: App bundle not found at $APP_BUNDLE"
-          echo "Contents of target/release/:"
-          ls -la target/release/
-          echo "Contents of current directory:"
-          ls -la
+        if [ ! -d "$APP_BUNDLE_PATH" ]; then
+          echo "❌ Error: App bundle not found at $APP_BUNDLE_PATH"
           exit 1
         fi
         
-        echo "✅ App bundle found, creating DMG..."
+        # Create a staging directory
+        rm -rf "$STAGING_DIR"
+        mkdir -p "$STAGING_DIR"
         
-        # Create temporary dmg directory
-        DMG_DIR=$(mktemp -d)
-        echo "Temporary DMG directory: $DMG_DIR"
+        # Copy the app bundle to the staging directory
+        cp -R "$APP_BUNDLE_PATH" "$STAGING_DIR/"
         
-        # Copy app bundle
-        echo "Copying app bundle to temporary directory..."
-        cp -R "$APP_BUNDLE" "$DMG_DIR/"
-        ls -la "$DMG_DIR/"
+        # Create a symlink to the Applications folder
+        ln -s /Applications "$STAGING_DIR/Applications"
         
-        # Create Applications symlink
-        echo "Creating Applications symlink..."
-        ln -s /Applications "$DMG_DIR/Applications"
+        # Create the DMG
+        hdiutil create -volname "$APP_NAME v$VERSION" -srcfolder "$STAGING_DIR" -ov -format UDZO "$DMG_NAME.dmg"
         
-        # Create DMG
-        echo "Creating DMG file: $DMG_NAME.dmg"
-        hdiutil create -volname "$APP_NAME v$VERSION" -srcfolder "$DMG_DIR" -ov -format UDZO "$DMG_NAME.dmg"
-        
-        # Cleanup
-        rm -rf "$DMG_DIR"
-        
-        # Verify DMG was created
+        # Verify DMG creation
         if [ -f "$DMG_NAME.dmg" ]; then
           echo "✅ DMG created successfully: $DMG_NAME.dmg"
-          ls -la "$DMG_NAME.dmg"
         else
           echo "❌ DMG creation failed"
           exit 1
         fi
-    
+
     - name: Create ZIP
       run: |
+        set -x # Enable verbose logging
         VERSION=${GITHUB_REF#refs/tags/v}
         APP_NAME="TypoFixer"
         ZIP_NAME="$APP_NAME-v$VERSION"
-        APP_BUNDLE="target/release/$APP_NAME.app"
+        APP_BUNDLE_PATH="target/release/$APP_NAME.app"
         
         echo "Creating ZIP for version: $VERSION"
-        echo "Looking for app bundle at: $APP_BUNDLE"
         
-        # Check if app bundle exists
-        if [ ! -d "$APP_BUNDLE" ]; then
-          echo "❌ Error: App bundle not found at $APP_BUNDLE"
-          echo "Contents of target/release/:"
-          ls -la target/release/
+        if [ ! -d "$APP_BUNDLE_PATH" ]; then
+          echo "❌ Error: App bundle not found at $APP_BUNDLE_PATH"
           exit 1
         fi
         
-        echo "✅ App bundle found, creating ZIP..."
+        # Create the ZIP archive
+        ditto -c -k --sequesterRsrc --keepParent "$APP_BUNDLE_PATH" "$ZIP_NAME.zip"
         
-        cd target/release
-        zip -r "../../$ZIP_NAME.zip" "$APP_NAME.app"
-        cd ../..
-        
-        # Verify ZIP was created
+        # Verify ZIP creation
         if [ -f "$ZIP_NAME.zip" ]; then
           echo "✅ ZIP created successfully: $ZIP_NAME.zip"
-          ls -la "$ZIP_NAME.zip"
         else
           echo "❌ ZIP creation failed"
           exit 1
