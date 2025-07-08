@@ -32,6 +32,10 @@ fi
 # Check if binary exists
 if [ ! -f "$BINARY_PATH" ]; then
     echo "Error: Binary not found at $BINARY_PATH"
+    echo "Looking for binaries in target directory:"
+    find target -name "typo-fixer" -type f 2>/dev/null || echo "No typo-fixer binary found"
+    echo "Contents of target/release:"
+    ls -la target/release/ 2>/dev/null || echo "target/release directory does not exist"
     echo "Make sure to run 'cargo build --release' first if using SKIP_BUILD=true"
     exit 1
 fi

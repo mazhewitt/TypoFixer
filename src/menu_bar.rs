@@ -150,6 +150,7 @@ pub fn setup_menu_bar() -> Result<(), Box<dyn std::error::Error>> {
 
 pub fn get_menu_bar() -> Result<&'static MenuBar, Box<dyn std::error::Error>> {
     unsafe {
+        #[allow(static_mut_refs)]
         MENU_BAR.as_ref().ok_or("Menu bar not initialized".into())
     }
 }

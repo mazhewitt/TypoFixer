@@ -40,57 +40,35 @@ jobs:
     - name: Build TypoFixer
       run: cargo build --release
     
+    - name: Debug - List target contents
+      run: |
+        echo "Contents of target/release:"
+        ls -la target/release/
+        echo "Looking for typo-fixer binary:"
+        find target -name "typo-fixer" -type f || echo "Binary not found"
+    
     - name: Create App Bundle
       run: |
-        APP_NAME="TypoFixer"
-        APP_BUNDLE="target/release/$APP_NAME.app"
-        BINARY_PATH="target/release/typo-fixer"
         VERSION=${GITHUB_REF#refs/tags/v}
-        
-        mkdir -p "$APP_BUNDLE/Contents/MacOS"
-        mkdir -p "$APP_BUNDLE/Contents/Resources"
-        cp "$BINARY_PATH" "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
-        
-        cat > "$APP_BUNDLE/Contents/Info.plist" << EOF
-        <?xml version="1.0" encoding="UTF-8"?>
-        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-        <plist version="1.0">
-        <dict>
-            <key>CFBundleExecutable</key>
-            <string>$APP_NAME</string>
-            <key>CFBundleIdentifier</key>
-            <string>com.typofixer.app</string>
-            <key>CFBundleName</key>
-            <string>$APP_NAME</string>
-            <key>CFBundleDisplayName</key>
-            <string>TypoFixer</string>
-            <key>CFBundleVersion</key>
-            <string>$VERSION</string>
-            <key>CFBundleShortVersionString</key>
-            <string>$VERSION</string>
-            <key>CFBundlePackageType</key>
-            <string>APPL</string>
-            <key>LSUIElement</key>
-            <true/>
-            <key>NSHighResolutionCapable</key>
-            <true/>
-            <key>NSAppleEventsUsageDescription</key>
-            <string>TypoFixer needs to send AppleScript events to interact with other applications for text correction.</string>
-            <key>NSAccessibilityUsageDescription</key>
-            <string>TypoFixer needs accessibility permissions to read and correct text in other applications.</string>
-        </dict>
-        </plist>
-        EOF
+        SKIP_BUILD=true VERSION=$VERSION ./build.sh
     
     - name: Create DMG
       run: |
         VERSION=${GITHUB_REF#refs/tags/v}
         APP_NAME="TypoFixer"
         DMG_NAME="$APP_NAME-v$VERSION"
+        APP_BUNDLE="target/release/$APP_NAME.app"
+        
+        # Check if app bundle exists
+        if [ ! -d "$APP_BUNDLE" ]; then
+          echo "Error: App bundle not found at $APP_BUNDLE"
+          ls -la target/release/
+          exit 1
+        fi
         
         # Create temporary dmg directory
         DMG_DIR=$(mktemp -d)
-        cp -R "target/release/$APP_NAME.app" "$DMG_DIR/"
+        cp -R "$APP_BUNDLE" "$DMG_DIR/"
         ln -s /Applications "$DMG_DIR/Applications"
         
         # Create DMG
@@ -102,6 +80,14 @@ jobs:
         VERSION=${GITHUB_REF#refs/tags/v}
         APP_NAME="TypoFixer"
         ZIP_NAME="$APP_NAME-v$VERSION"
+        APP_BUNDLE="target/release/$APP_NAME.app"
+        
+        # Check if app bundle exists
+        if [ ! -d "$APP_BUNDLE" ]; then
+          echo "Error: App bundle not found at $APP_BUNDLE"
+          ls -la target/release/
+          exit 1
+        fi
         
         cd target/release
         zip -r "../../$ZIP_NAME.zip" "$APP_NAME.app"

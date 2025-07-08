@@ -1,6 +1,7 @@
 use std::fmt;
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub enum AppError {
     Accessibility(String),
     SpellCheck(String),
@@ -53,4 +54,5 @@ impl From<&str> for AppError {
 // Note: From<AppError> for Box<dyn std::error::Error> is automatically implemented
 // because AppError implements std::error::Error
 
+#[allow(dead_code)]
 pub type Result<T> = std::result::Result<T, AppError>;
