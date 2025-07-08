@@ -74,12 +74,14 @@ jobs:
       run: |
         set -x # Enable verbose logging
         VERSION=${GITHUB_REF#refs/tags/v}
+        # Sanitize version string for use in filenames (replace / with _)
+        SAFE_VERSION="${VERSION//\//_}"
         APP_NAME="TypoFixer"
-        DMG_NAME="$APP_NAME-v$VERSION"
+        DMG_NAME="$APP_NAME-v$SAFE_VERSION"
         APP_BUNDLE_PATH="target/release/$APP_NAME.app"
         STAGING_DIR="dmg-staging"
 
-        echo "Creating DMG for version: $VERSION"
+        echo "Creating DMG for version: $VERSION (sanitized: $SAFE_VERSION)"
         
         if [ ! -d "$APP_BUNDLE_PATH" ]; then
           echo "❌ Error: App bundle not found at $APP_BUNDLE_PATH"
@@ -97,7 +99,7 @@ jobs:
         ln -s /Applications "$STAGING_DIR/Applications"
         
         # Create the DMG
-        hdiutil create -volname "$APP_NAME v$VERSION" -srcfolder "$STAGING_DIR" -ov -format UDZO "$DMG_NAME.dmg"
+        hdiutil create -volname "$APP_NAME v$SAFE_VERSION" -srcfolder "$STAGING_DIR" -ov -format UDZO "$DMG_NAME.dmg"
         
         # Verify DMG creation
         if [ -f "$DMG_NAME.dmg" ]; then
@@ -111,11 +113,13 @@ jobs:
       run: |
         set -x # Enable verbose logging
         VERSION=${GITHUB_REF#refs/tags/v}
+        # Sanitize version string for use in filenames (replace / with _)
+        SAFE_VERSION="${VERSION//\//_}"
         APP_NAME="TypoFixer"
-        ZIP_NAME="$APP_NAME-v$VERSION"
+        ZIP_NAME="$APP_NAME-v$SAFE_VERSION"
         APP_BUNDLE_PATH="target/release/$APP_NAME.app"
         
-        echo "Creating ZIP for version: $VERSION"
+        echo "Creating ZIP for version: $VERSION (sanitized: $SAFE_VERSION)"
         
         if [ ! -d "$APP_BUNDLE_PATH" ]; then
           echo "❌ Error: App bundle not found at $APP_BUNDLE_PATH"

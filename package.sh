@@ -71,7 +71,9 @@ cp -R "$APP_BUNDLE" "$DIST_DIR/"
 
 # Create DMG
 echo "💽 Creating DMG..."
-DMG_NAME="$APP_NAME-v$VERSION"
+# Sanitize version string for use in filenames (replace / with _)
+SAFE_VERSION="${VERSION//\//_}"
+DMG_NAME="$APP_NAME-v$SAFE_VERSION"
 DMG_PATH="$DIST_DIR/$DMG_NAME.dmg"
 
 # Create temporary dmg directory
@@ -82,12 +84,12 @@ cp -R "$APP_BUNDLE" "$DMG_DIR/"
 ln -s /Applications "$DMG_DIR/Applications"
 
 # Create DMG
-hdiutil create -volname "$APP_NAME v$VERSION" -srcfolder "$DMG_DIR" -ov -format UDZO "$DMG_PATH"
+hdiutil create -volname "$APP_NAME v$SAFE_VERSION" -srcfolder "$DMG_DIR" -ov -format UDZO "$DMG_PATH"
 rm -rf "$DMG_DIR"
 
 # Create ZIP archive
 echo "🗜️  Creating ZIP archive..."
-ZIP_NAME="$APP_NAME-v$VERSION"
+ZIP_NAME="$APP_NAME-v$SAFE_VERSION"
 ZIP_PATH="$DIST_DIR/$ZIP_NAME.zip"
 cd "$DIST_DIR"
 zip -r "$ZIP_NAME.zip" "$APP_NAME.app"
@@ -95,7 +97,7 @@ cd ..
 
 # Create installer package
 echo "📦 Creating installer package..."
-PKG_NAME="$APP_NAME-v$VERSION-Installer"
+PKG_NAME="$APP_NAME-v$SAFE_VERSION-Installer"
 PKG_PATH="$DIST_DIR/$PKG_NAME.pkg"
 
 # Create package structure
