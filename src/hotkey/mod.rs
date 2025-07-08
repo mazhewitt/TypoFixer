@@ -24,7 +24,7 @@ impl HotkeyManager {
         let hotkey = HotKey::new(Some(Modifiers::SUPER | Modifiers::ALT), Code::KeyS);
         
         // Register the hotkey
-        manager.register(hotkey.clone()).map_err(|e| format!("Failed to register hotkey: {}", e))?;
+        manager.register(hotkey).map_err(|e| format!("Failed to register hotkey: {}", e))?;
         
         // Store the manager
         self.manager = Some(manager);
@@ -79,7 +79,7 @@ pub fn setup_hotkey() -> Result<(), Box<dyn std::error::Error>> {
     info!("Created hotkey: {:?} (⌘⌥S)", hotkey);
     
     // Register the hotkey
-    match manager.register(hotkey.clone()) {
+    match manager.register(hotkey) {
         Ok(_) => {
             info!("✅ Hotkey ⌘⌥S registered successfully!");
         }

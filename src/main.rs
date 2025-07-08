@@ -6,7 +6,6 @@ use std::fs;
 use std::io::Write;
 use std::thread;
 use tracing::{info, error, warn, debug};
-use tracing_subscriber;
 
 // Module imports
 mod config;
@@ -71,7 +70,7 @@ fn process_text_correction() -> Result<bool, Box<dyn std::error::Error>> {
     // Generate correction
     let corrected = {
         let mut model_guard = LLAMA_MODEL.lock().unwrap();
-        generate_correction(&text, &mut *model_guard)?
+        generate_correction(&text, &mut model_guard)?
     };
     
     info!("Original text: '{}' (len: {})", text, text.len());

@@ -285,7 +285,7 @@ fn get_last_sentence(text: &str) -> (String, std::ops::Range<usize>) {
     
     // Find the last sentence boundary
     // First, check if the text ends with punctuation
-    let ends_with_punctuation = chars.last().map_or(false, |&c| c == '.' || c == '!' || c == '?');
+    let ends_with_punctuation = chars.last().is_some_and(|&c| c == '.' || c == '!' || c == '?');
     
     if ends_with_punctuation {
         // If text ends with punctuation, find the start of the last sentence

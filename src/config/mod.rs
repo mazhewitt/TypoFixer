@@ -1,6 +1,5 @@
 use std::path::PathBuf;
 use std::fs;
-use toml_edit;
 
 #[derive(Clone, Debug)]
 pub struct Config {

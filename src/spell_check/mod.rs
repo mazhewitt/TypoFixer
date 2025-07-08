@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
@@ -33,7 +33,7 @@ pub struct LlamaModelWrapper {
 }
 
 impl LlamaModelWrapper {
-    pub fn new(_model_path: &PathBuf) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new(_model_path: &Path) -> Result<Self, Box<dyn std::error::Error>> {
         info!("Initializing Ollama client for text correction...");
         
         let client = Client::new();
@@ -67,7 +67,7 @@ impl LlamaModelWrapper {
         let rt = tokio::runtime::Runtime::new()?;
         rt.block_on(async {
             let response = self.client
-                .get(&format!("{}/api/tags", self.base_url))
+                .get(format!("{}/api/tags", self.base_url))
                 .send()
                 .await?;
             
@@ -103,7 +103,7 @@ impl LlamaModelWrapper {
         let rt = tokio::runtime::Runtime::new()?;
         rt.block_on(async {
             let response = self.client
-                .post(&format!("{}/api/generate", self.base_url))
+                .post(format!("{}/api/generate", self.base_url))
                 .json(&request)
                 .send()
                 .await?;
@@ -155,10 +155,8 @@ impl LlamaModelWrapper {
         
         // Remove unwanted periods that the model might add
         // If the original text didn't end with punctuation, don't add it
-        if !original.ends_with('.') && !original.ends_with('!') && !original.ends_with('?') {
-            if result.ends_with('.') {
-                result = result.trim_end_matches('.').trim();
-            }
+        if !original.ends_with('.') && !original.ends_with('!') && !original.ends_with('?') && result.ends_with('.') {
+            result = result.trim_end_matches('.').trim();
         }
         
         result.to_string()
