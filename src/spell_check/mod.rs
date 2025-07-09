@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
@@ -185,33 +185,13 @@ pub fn generate_correction(
     }
 }
 
-// Helper function to check if Ollama is available
-pub fn ensure_model_available() -> Result<(), Box<dyn std::error::Error>> {
-    info!("Checking Ollama availability...");
-    
-    let client = Client::new();
-    let rt = tokio::runtime::Runtime::new()?;
-    
-    rt.block_on(async {
-        let response = client
-            .get("http://localhost:11434/api/tags")
-            .send()
-            .await?;
-        
-        if response.status().is_success() {
-            info!("✅ Ollama is running");
-            Ok(())
-        } else {
-            Err("Ollama is not running. Start it with: ollama serve".into())
-        }
-    })
-}
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use tempfile::TempDir;
     use std::fs;
+    use std::path::PathBuf;
 
     fn create_temp_model_file() -> (TempDir, PathBuf) {
         let temp_dir = TempDir::new().unwrap();

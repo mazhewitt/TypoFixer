@@ -54,12 +54,6 @@ impl Config {
         Ok(())
     }
     
-    pub fn prompt_for_model_path() -> Option<PathBuf> {
-        // Mock implementation - just return default path for now
-        let default_path = Config::default().model_path;
-        println!("Please create a model file at: {}", default_path.display());
-        Some(default_path)
-    }
 }
 
 #[cfg(test)]

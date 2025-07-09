@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - 'v*'
+    branches:
+      - 'main'
   workflow_dispatch:
 
 env:
@@ -50,7 +52,17 @@ jobs:
     - name: Create App Bundle
       run: |
         set -x # Enable verbose logging
-        VERSION=${GITHUB_REF#refs/tags/v}
+        # Extract version from GITHUB_REF, handling both tags and branches
+        if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+          VERSION=${GITHUB_REF#refs/tags/v}
+        elif [[ "$GITHUB_REF" == refs/heads/* ]]; then
+          BRANCH_NAME=${GITHUB_REF#refs/heads/}
+          # Sanitize branch name for filename use
+          SAFE_BRANCH=$(echo "$BRANCH_NAME" | sed 's/[^a-zA-Z0-9._-]/-/g')
+          VERSION="dev-${SAFE_BRANCH}-${GITHUB_SHA:0:7}"
+        else
+          VERSION="dev-${GITHUB_SHA:0:7}"
+        fi
         echo "🚀 Starting app bundle creation with version: $VERSION"
         echo "GITHUB_REF: $GITHUB_REF"
         echo "Extracted VERSION: $VERSION"
@@ -73,7 +85,17 @@ jobs:
     - name: Create DMG
       run: |
         set -x # Enable verbose logging
-        VERSION=${GITHUB_REF#refs/tags/v}
+        # Extract version from GITHUB_REF, handling both tags and branches
+        if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+          VERSION=${GITHUB_REF#refs/tags/v}
+        elif [[ "$GITHUB_REF" == refs/heads/* ]]; then
+          BRANCH_NAME=${GITHUB_REF#refs/heads/}
+          # Sanitize branch name for filename use
+          SAFE_BRANCH=$(echo "$BRANCH_NAME" | sed 's/[^a-zA-Z0-9._-]/-/g')
+          VERSION="dev-${SAFE_BRANCH}-${GITHUB_SHA:0:7}"
+        else
+          VERSION="dev-${GITHUB_SHA:0:7}"
+        fi
         APP_NAME="TypoFixer"
         DMG_NAME="$APP_NAME-v$VERSION"
         APP_BUNDLE_PATH="target/release/$APP_NAME.app"
@@ -110,7 +132,17 @@ jobs:
     - name: Create ZIP
       run: |
         set -x # Enable verbose logging
-        VERSION=${GITHUB_REF#refs/tags/v}
+        # Extract version from GITHUB_REF, handling both tags and branches
+        if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+          VERSION=${GITHUB_REF#refs/tags/v}
+        elif [[ "$GITHUB_REF" == refs/heads/* ]]; then
+          BRANCH_NAME=${GITHUB_REF#refs/heads/}
+          # Sanitize branch name for filename use
+          SAFE_BRANCH=$(echo "$BRANCH_NAME" | sed 's/[^a-zA-Z0-9._-]/-/g')
+          VERSION="dev-${SAFE_BRANCH}-${GITHUB_SHA:0:7}"
+        else
+          VERSION="dev-${GITHUB_SHA:0:7}"
+        fi
         APP_NAME="TypoFixer"
         ZIP_NAME="$APP_NAME-v$VERSION"
         APP_BUNDLE_PATH="target/release/$APP_NAME.app"
@@ -135,7 +167,17 @@ jobs:
     
     - name: Create Release Notes
       run: |
-        VERSION=${GITHUB_REF#refs/tags/v}
+        # Extract version from GITHUB_REF, handling both tags and branches
+        if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+          VERSION=${GITHUB_REF#refs/tags/v}
+        elif [[ "$GITHUB_REF" == refs/heads/* ]]; then
+          BRANCH_NAME=${GITHUB_REF#refs/heads/}
+          # Sanitize branch name for filename use
+          SAFE_BRANCH=$(echo "$BRANCH_NAME" | sed 's/[^a-zA-Z0-9._-]/-/g')
+          VERSION="dev-${SAFE_BRANCH}-${GITHUB_SHA:0:7}"
+        else
+          VERSION="dev-${GITHUB_SHA:0:7}"
+        fi
         cat > RELEASE_NOTES.md << EOF
         # TypoFixer v$VERSION
         
