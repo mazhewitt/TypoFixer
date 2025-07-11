@@ -1,330 +1,77 @@
-use accessibility_sys::*;
-use cocoa::base::id;
-use core_foundation::string::{CFString, CFStringRef};
-use core_foundation::base::{CFTypeRef, TCFType};
-use objc::{msg_send, sel, sel_impl};
-use tracing::{info, warn, debug};
-use std::ffi;
+// Refactored accessibility module with improved structure and reduced duplication
 
-pub type ElementRef = AXUIElementRef;
+pub mod ax_api;
+pub mod text_extraction;
+pub mod clipboard;
+pub mod applescript;
+pub mod fallbacks;
 
+// Re-export commonly used types and functions
+pub use ax_api::{ElementRef, AxApi};
+pub use text_extraction::TextExtractor;
+pub use clipboard::ClipboardManager;
+pub use applescript::AppleScriptManager;
+pub use fallbacks::FallbackManager;
+
+// Legacy compatibility functions - these wrap the new modular implementation
+use tracing::info;
+use std::ops::Range;
+
+/// Get the currently focused accessibility element
 pub fn get_focused_element() -> Result<ElementRef, Box<dyn std::error::Error>> {
-    unsafe {
-        // Get the system-wide element first
-        let system_element = AXUIElementCreateSystemWide();
-        if system_element.is_null() {
-            return Err("Failed to create system element".into());
-        }
-        
-        // Get the focused application
-        let focused_app_attr = CFString::new("AXFocusedApplication");
-        let mut focused_app_ref: CFTypeRef = std::ptr::null();
-        let result = AXUIElementCopyAttributeValue(
-            system_element,
-            focused_app_attr.as_concrete_TypeRef(),
-            &mut focused_app_ref
-        );
-        
-        // Check for accessibility permission errors
-        if result == kAXErrorAPIDisabled || result == kAXErrorNotImplemented {
-            return Err("⚠️  Accessibility permissions not granted. Please:\n1. Go to System Preferences > Security & Privacy > Privacy > Accessibility\n2. Add this application\n3. Try again".into());
-        }
-        
-        if result != kAXErrorSuccess || focused_app_ref.is_null() {
-            warn!("Failed to get focused application: AX error {}", result);
-            return Err("No focused application found".into());
-        }
-        
-        let focused_app = focused_app_ref as AXUIElementRef;
-        
-        // Get the focused element from the focused application
-        let focused_element_attr = CFString::new("AXFocusedUIElement"); 
-        let mut focused_element_ref: CFTypeRef = std::ptr::null();
-        let result = AXUIElementCopyAttributeValue(
-            focused_app,
-            focused_element_attr.as_concrete_TypeRef(),
-            &mut focused_element_ref
-        );
-        
-        if result != kAXErrorSuccess || focused_element_ref.is_null() {
-            debug!("No focused UI element found in application");
-            return Err("No focused text field found".into());
-        }
-        
-        let focused_element = focused_element_ref as AXUIElementRef;
-        
-        // Verify this is a text-editable element
-        let role_attr = CFString::new("AXRole");
-        let mut role_ref: CFTypeRef = std::ptr::null();
-        let result = AXUIElementCopyAttributeValue(
-            focused_element,
-            role_attr.as_concrete_TypeRef(),
-            &mut role_ref
-        );
-        
-        if result == kAXErrorSuccess && !role_ref.is_null() {
-            let role_cfstring = CFString::wrap_under_get_rule(role_ref as CFStringRef);
-            let role_string = role_cfstring.to_string();
-            debug!("Focused element role: {}", role_string);
+    let system_element = AxApi::get_system_element()?;
+    
+    // Get focused application
+    match AxApi::get_attribute_value(system_element, "AXFocusedApplication")? {
+        Some(app_ref) => {
+            let focused_app = app_ref as ElementRef;
             
-            // Check if it's a text field or text area
-            if role_string == "AXTextField" || 
-               role_string == "AXTextArea" || 
-               role_string == "AXSecureTextField" ||
-               role_string == "AXComboBox" {
-                info!("✅ Found focused text element: {}", role_string);
-                return Ok(focused_element);
-            } else {
-                return Err(format!("Focused element is not a text field (role: {})", role_string).into());
+            // Get focused element from application
+            match AxApi::get_attribute_value(focused_app, "AXFocusedUIElement")? {
+                Some(element_ref) => {
+                    let focused_element = element_ref as ElementRef;
+                    
+                    // Verify this is a text-editable element
+                    if AxApi::is_text_editable(focused_element) {
+                        let role = AxApi::get_element_role(focused_element)?;
+                        info!("✅ Found focused text element: {}", role);
+                        Ok(focused_element)
+                    } else {
+                        let role = AxApi::get_element_role(focused_element)
+                            .unwrap_or_else(|_| "unknown".to_string());
+                        Err(format!("Focused element is not a text field (role: {})", role).into())
+                    }
+                }
+                None => Err("No focused UI element found".into())
             }
         }
-        
-        // If we can't determine the role, try anyway
-        warn!("Could not determine element role, attempting to use anyway");
-        Ok(focused_element)
+        None => Err("No focused application found".into())
     }
 }
 
+/// Check if the given element is a secure text field
 pub fn is_secure_field(element: &ElementRef) -> bool {
     // Handle null element (testing scenario)
     if element.is_null() {
         return false;
     }
     
-    unsafe {
-        // Check the role of the element
-        let role_attr = CFString::new("AXRole");
-        let mut role_ref: CFTypeRef = std::ptr::null();
-        let result = AXUIElementCopyAttributeValue(
-            *element,
-            role_attr.as_concrete_TypeRef(),
-            &mut role_ref
-        );
-        
-        if result == kAXErrorSuccess && !role_ref.is_null() {
-            let role_cfstring = CFString::wrap_under_get_rule(role_ref as CFStringRef);
-            let role_string = role_cfstring.to_string();
-            
-            // Check if it's a secure text field
-            if role_string == "AXSecureTextField" {
-                debug!("🔒 Detected secure text field");
-                return true;
-            }
-        }
-        
-        // Additional check for password-related attributes
-        let subrole_attr = CFString::new("AXSubrole");
-        let mut subrole_ref: CFTypeRef = std::ptr::null();
-        let result = AXUIElementCopyAttributeValue(
-            *element,
-            subrole_attr.as_concrete_TypeRef(),
-            &mut subrole_ref
-        );
-        
-        if result == kAXErrorSuccess && !subrole_ref.is_null() {
-            let subrole_cfstring = CFString::wrap_under_get_rule(subrole_ref as CFStringRef);
-            let subrole_string = subrole_cfstring.to_string();
-            
-            if subrole_string.contains("Password") || subrole_string.contains("Secure") {
-                debug!("🔒 Detected secure field by subrole: {}", subrole_string);
-                return true;
-            }
-        }
-        
-        false
-    }
+    AxApi::is_secure_field(*element)
 }
 
-pub fn get_text_to_correct(element: &ElementRef) -> Result<(String, std::ops::Range<usize>), Box<dyn std::error::Error>> {
+/// Extract text to be corrected from the given element
+pub fn get_text_to_correct(element: &ElementRef) -> Result<(String, Range<usize>), Box<dyn std::error::Error>> {
     // Handle null element (testing scenario)
     if element.is_null() {
-        // Return mock data for testing
         return Ok(("I recieve teh mesage with thier help.".to_string(), 0..37));
     }
     
-    unsafe {
-        // First try to get selected text
-        let selected_text_attr = CFString::new("AXSelectedText");
-        let mut selected_text_ref: CFTypeRef = std::ptr::null();
-        let result = AXUIElementCopyAttributeValue(
-            *element,
-            selected_text_attr.as_concrete_TypeRef(),
-            &mut selected_text_ref
-        );
-        
-        if result == kAXErrorSuccess && !selected_text_ref.is_null() {
-            let selected_cfstring = CFString::wrap_under_get_rule(selected_text_ref as CFStringRef);
-            let selected_text = selected_cfstring.to_string();
-            
-            if !selected_text.trim().is_empty() {
-                info!("📄 Found selected text: '{}'", selected_text);
-                return Ok((selected_text.clone(), 0..selected_text.len()));
-            }
-        }
-        
-        // No selected text, try to get all text and determine a smart range
-        let value_attr = CFString::new("AXValue");
-        let mut value_ref: CFTypeRef = std::ptr::null();
-        let result = AXUIElementCopyAttributeValue(
-            *element,
-            value_attr.as_concrete_TypeRef(),
-            &mut value_ref
-        );
-        
-        if result != kAXErrorSuccess || value_ref.is_null() {
-            return Err("Could not read text from element".into());
-        }
-        
-        let value_cfstring = CFString::wrap_under_get_rule(value_ref as CFStringRef);
-        let full_text = value_cfstring.to_string();
-        
-        if full_text.is_empty() {
-            return Err("Text field is empty".into());
-        }
-        
-        // Try to get cursor position to determine what text to correct
-        let selected_range_attr = CFString::new("AXSelectedTextRange");
-        let mut range_ref: CFTypeRef = std::ptr::null();
-        let result = AXUIElementCopyAttributeValue(
-            *element,
-            selected_range_attr.as_concrete_TypeRef(),
-            &mut range_ref
-        );
-        
-        if result == kAXErrorSuccess && !range_ref.is_null() {
-            // We have cursor position, try to get sentence around cursor
-            // For now, let's try to get a reasonable text range around the cursor
-            // This is simplified - a real implementation might use more sophisticated text analysis
-            
-            // Try to get the current sentence or a reasonable chunk of text
-            let text_around_cursor = get_text_around_cursor(&full_text, &full_text.len());
-            
-            info!("📄 Getting text around cursor: '{}'", text_around_cursor.0);
-            Ok(text_around_cursor)
-        } else {
-            // No cursor info, return the last sentence or reasonable chunk
-            let last_sentence = get_last_sentence(&full_text);
-            info!("📄 Getting last sentence: '{}'", last_sentence.0);
-            Ok(last_sentence)
-        }
-    }
+    // Use the new accessibility extraction
+    FallbackManager::try_accessibility_extraction(element)
 }
 
-// Helper function to get text around cursor position
-fn get_text_around_cursor(text: &str, cursor_pos: &usize) -> (String, std::ops::Range<usize>) {
-    let cursor_pos = (*cursor_pos).min(text.len());
-    
-    // Find sentence boundaries around cursor
-    let chars: Vec<char> = text.chars().collect();
-    let mut start = 0;
-    let mut end = chars.len();
-    
-    // Find start of sentence (work backwards from cursor)
-    for i in (0..cursor_pos).rev() {
-        if i < chars.len() && (chars[i] == '.' || chars[i] == '!' || chars[i] == '?') {
-            // If cursor is right after punctuation, include the sentence ending with that punctuation
-            if i + 1 == cursor_pos {
-                // Look for the start of THIS sentence (the one ending with punctuation)
-                for j in (0..i).rev() {
-                    if chars[j] == '.' || chars[j] == '!' || chars[j] == '?' {
-                        start = (j + 1).min(chars.len());
-                        break;
-                    }
-                    // Don't go back more than 200 characters from punctuation
-                    if i - j > 200 {
-                        start = j;
-                        break;
-                    }
-                }
-                break;
-            } else {
-                // Cursor is in the middle of text, start after this punctuation
-                start = (i + 1).min(chars.len());
-                break;
-            }
-        }
-        // Don't go back more than 200 characters
-        if cursor_pos - i > 200 {
-            start = i;
-            break;
-        }
-    }
-    
-    // Find end of sentence (work forwards from cursor)
-    for i in cursor_pos..chars.len() {
-        if chars[i] == '.' || chars[i] == '!' || chars[i] == '?' {
-            end = (i + 1).min(chars.len());
-            break;
-        }
-        // Don't go forward more than 200 characters
-        if i - cursor_pos > 200 {
-            end = i;
-            break;
-        }
-    }
-    
-    // Skip leading whitespace
-    while start < chars.len() && chars[start].is_whitespace() {
-        start += 1;
-    }
-    
-    // Skip trailing whitespace
-    while end > start && end > 0 && chars[end - 1].is_whitespace() {
-        end -= 1;
-    }
-    
-    let text_slice: String = chars[start..end].iter().collect();
-    (text_slice, start..end)
-}
-
-// Helper function to get the last sentence or reasonable chunk of text
-fn get_last_sentence(text: &str) -> (String, std::ops::Range<usize>) {
-    let chars: Vec<char> = text.chars().collect();
-    let mut start = 0;
-    let end = chars.len();
-    
-    // Find the last sentence boundary
-    // First, check if the text ends with punctuation
-    let ends_with_punctuation = chars.last().is_some_and(|&c| c == '.' || c == '!' || c == '?');
-    
-    if ends_with_punctuation {
-        // If text ends with punctuation, find the start of the last sentence
-        for i in (0..chars.len() - 1).rev() {
-            if chars[i] == '.' || chars[i] == '!' || chars[i] == '?' {
-                start = (i + 1).min(chars.len());
-                break;
-            }
-            // Don't go back more than 300 characters
-            if chars.len() - i > 300 {
-                start = i;
-                break;
-            }
-        }
-    } else {
-        // If text doesn't end with punctuation, find the last sentence boundary
-        for i in (0..chars.len()).rev() {
-            if chars[i] == '.' || chars[i] == '!' || chars[i] == '?' {
-                start = (i + 1).min(chars.len());
-                break;
-            }
-            // Don't go back more than 300 characters
-            if chars.len() - i > 300 {
-                start = i;
-                break;
-            }
-        }
-    }
-    
-    // Skip leading whitespace
-    while start < chars.len() && chars[start].is_whitespace() {
-        start += 1;
-    }
-    
-    let text_slice: String = chars[start..end].iter().collect();
-    (text_slice, start..end)
-}
-
-pub fn set_text(element: &ElementRef, text: &str, range: std::ops::Range<usize>) -> Result<(), Box<dyn std::error::Error>> {
+/// Set corrected text in the given element
+pub fn set_text(element: &ElementRef, text: &str, range: Range<usize>) -> Result<(), Box<dyn std::error::Error>> {
     // Handle null element (testing scenario)
     if element.is_null() {
         info!("📝 Mock set text: '{}'", text);
@@ -332,158 +79,67 @@ pub fn set_text(element: &ElementRef, text: &str, range: std::ops::Range<usize>)
         return Ok(());
     }
     
-    // First, let's get the current text to understand what we're working with
-    let value_attr = CFString::new("AXValue");
-    let mut current_value_ref: CFTypeRef = std::ptr::null();
-    
-    // First unsafe operation: FFI call to get current value
-    let result = unsafe {
-        AXUIElementCopyAttributeValue(
-            *element,
-            value_attr.as_concrete_TypeRef(),
-            &mut current_value_ref
-        )
-    };
-    
-    let current_text = if result == kAXErrorSuccess && !current_value_ref.is_null() {
-        // Second unsafe operation: wrapping raw pointer from FFI
-        let current_cfstring = unsafe { CFString::wrap_under_get_rule(current_value_ref as CFStringRef) };
-        current_cfstring.to_string()
-    } else {
-        String::new()
-    };
-    
-    // Calculate the new text by replacing the range with corrected text (safe operations)
-    let new_text = if range.start < current_text.len() && range.end <= current_text.len() {
-        let mut result = String::new();
-        result.push_str(&current_text[..range.start]);
-        result.push_str(text);
-        result.push_str(&current_text[range.end..]);
-        result
-    } else {
-        // If range is invalid, replace all text
-        text.to_string()
-    };
-    
-    // Create CFString for the new text (safe operation)
-    let new_text_cfstring = CFString::new(&new_text);
-    
-    // Third unsafe operation: FFI call to set the new value
-    let result = unsafe {
-        AXUIElementSetAttributeValue(
-            *element,
-            value_attr.as_concrete_TypeRef(),
-            new_text_cfstring.as_CFTypeRef()
-        )
-    };
-    
-    if result != kAXErrorSuccess {
-        warn!("Failed to set text via AXValue: AX error {}", result);
-        
-        // Fallback: Try using selected text replacement
-        return set_text_via_selection(element, text, range);
-    }
-    
-    info!("📝 Successfully set text: '{}'", text);
-    println!("✅ Corrected text: {}", text);
-    Ok(())
+    FallbackManager::try_accessibility_setting(element, text, range)
 }
 
-// Fallback method: Set text by selecting the range and replacing
-fn set_text_via_selection(element: &ElementRef, text: &str, _range: std::ops::Range<usize>) -> Result<(), Box<dyn std::error::Error>> {
-    // Try to select the range first
-    let _selected_range_attr = CFString::new("AXSelectedTextRange");
-    
-    // Create a range value (this is complex in Core Foundation, simplified here)
-    // For now, let's try a different approach: select all and replace
-    
-    // First, try to select all text
-    let value_attr = CFString::new("AXValue");
-    let mut current_value_ref: CFTypeRef = std::ptr::null();
-    
-    // First unsafe operation: FFI call to get current value
-    let result = unsafe {
-        AXUIElementCopyAttributeValue(
-            *element,
-            value_attr.as_concrete_TypeRef(),
-            &mut current_value_ref
-        )
-    };
-    
-    if result == kAXErrorSuccess && !current_value_ref.is_null() {
-        // Second unsafe operation: wrapping raw pointer from FFI
-        let current_cfstring = unsafe { CFString::wrap_under_get_rule(current_value_ref as CFStringRef) };
-        let _current_text = current_cfstring.to_string();
-        
-        // Try to set selected text directly
-        let selected_text_attr = CFString::new("AXSelectedText");
-        let new_text_cfstring = CFString::new(text);
-        
-        // Third unsafe operation: FFI call to set selected text
-        let result = unsafe {
-            AXUIElementSetAttributeValue(
-                *element,
-                selected_text_attr.as_concrete_TypeRef(),
-                new_text_cfstring.as_CFTypeRef()
-            )
-        };
-        
-        if result == kAXErrorSuccess {
-            info!("📝 Set text via AXSelectedText: '{}'", text);
-            println!("✅ Corrected text: {}", text);
-            return Ok(());
-        }
-    }
-    
-    // If all else fails, show what we would have set
-    warn!("Could not set text via accessibility API");
-    info!("📝 Would set text: '{}'", text);
-    println!("⚠️  Could not write to text field, but correction is: {}", text);
-    
-    // Return success anyway since we showed the correction
-    Ok(())
+/// Extract text using multiple fallback strategies
+pub fn get_text_to_correct_with_fallbacks(element: &ElementRef) -> Result<(String, Range<usize>), Box<dyn std::error::Error>> {
+    FallbackManager::extract_text_with_fallbacks(element)
 }
 
-pub fn get_sentence_range(text: &str) -> Result<std::ops::Range<usize>, Box<dyn std::error::Error>> {
-    let cursor_pos = text.len(); // Assume cursor is at end
-    
-    // Find previous sentence boundary
-    let mut start = 0; // Start from beginning if no sentence boundary found
-    let chars: Vec<char> = text.chars().collect();
-    
-    for i in (0..cursor_pos.min(chars.len())).rev() {
-        if chars[i] == '.' || chars[i] == '!' || chars[i] == '?' {
-            start = i + 1;
-            break;
-        }
-        if cursor_pos - i > 300 {
-            start = i;
-            break;
-        }
-    }
-    
-    // Skip whitespace
-    while start < chars.len() && chars[start].is_whitespace() {
-        start += 1;
-    }
-    
-    Ok(start..cursor_pos)
+/// Set text using multiple fallback strategies
+pub fn set_text_with_fallbacks(element: &ElementRef, text: &str, range: Range<usize>) -> Result<(), Box<dyn std::error::Error>> {
+    FallbackManager::set_text_with_fallbacks(element, text, range)
 }
 
-pub fn get_selection_range(_range_ref: *const ffi::c_void) -> Result<std::ops::Range<usize>, Box<dyn std::error::Error>> {
-    // Mock implementation for now
+/// Extract text via clipboard fallback
+pub fn get_text_via_clipboard_fallback() -> Result<(String, Range<usize>), Box<dyn std::error::Error>> {
+    let text = ClipboardManager::extract_text_via_clipboard()?;
+    let (sentence, range) = TextExtractor::extract_last_sentence(&text);
+    Ok((sentence, range))
+}
+
+/// Extract text via AppleScript fallback
+pub fn get_text_via_applescript() -> Result<(String, Range<usize>), Box<dyn std::error::Error>> {
+    let text = AppleScriptManager::extract_text()?;
+    let (sentence, range) = TextExtractor::extract_last_sentence(&text);
+    Ok((sentence, range))
+}
+
+/// Set text using only clipboard method
+pub fn set_text_clipboard_only(text: &str) -> Result<(), Box<dyn std::error::Error>> {
+    FallbackManager::set_text_clipboard_only(text)
+}
+
+/// Check if current app is problematic for accessibility
+pub fn is_problematic_app() -> bool {
+    AppleScriptManager::is_problematic_app()
+}
+
+// Legacy utility functions (marked as deprecated but kept for compatibility)
+#[deprecated(note = "Use TextExtractor::extract_last_sentence instead")]
+#[allow(dead_code)]
+pub fn get_sentence_range(text: &str) -> Result<Range<usize>, Box<dyn std::error::Error>> {
+    let (_extracted, range) = TextExtractor::extract_last_sentence(text);
+    Ok(range)
+}
+
+#[deprecated(note = "This function is not needed in the new architecture")]
+#[allow(dead_code)]
+pub fn get_selection_range(_range_ref: *const std::ffi::c_void) -> Result<Range<usize>, Box<dyn std::error::Error>> {
     Ok(0..0)
 }
 
-// Helper function for NS string conversion (used in actual Cocoa integration)
+#[deprecated(note = "Use AxApi methods instead")]
 #[allow(dead_code)]
-pub fn nsstring_to_string(ns_str: id) -> String {
+pub fn nsstring_to_string(ns_str: cocoa::base::id) -> String {
     unsafe {
+        use objc::{msg_send, sel, sel_impl};
         let utf8_str: *const i8 = msg_send![ns_str, UTF8String];
         if utf8_str.is_null() {
             String::new()
         } else {
-            ffi::CStr::from_ptr(utf8_str).to_string_lossy().to_string()
+            std::ffi::CStr::from_ptr(utf8_str).to_string_lossy().to_string()
         }
     }
 }
@@ -497,7 +153,7 @@ mod tests {
         let dummy_element = std::ptr::null_mut();
         let result = get_text_to_correct(&dummy_element).unwrap();
         assert_eq!(result.0, "I recieve teh mesage with thier help.");
-        assert_eq!(result.1, 0..37); // Correct length
+        assert_eq!(result.1, 0..37);
     }
 
     #[test]
@@ -510,22 +166,16 @@ mod tests {
     #[test]
     fn test_get_focused_element_mock() {
         // This test will fail in CI/testing environments without accessibility permissions
-        // which is expected behavior
         let result = get_focused_element();
         assert!(result.is_err());
-        // The error could be various things depending on the test environment
         let error_msg = result.unwrap_err().to_string();
+        println!("Actual error message: '{}'", error_msg);
         assert!(error_msg.contains("Accessibility permissions not granted") || 
                 error_msg.contains("No focused application found") ||
                 error_msg.contains("Failed to get focused application") ||
-                error_msg.contains("Failed to create system element"));
-    }
-
-    #[test]
-    fn test_get_selection_range_mock() {
-        let dummy_range = std::ptr::null();
-        let result = get_selection_range(dummy_range).unwrap();
-        assert_eq!(result, 0..0);
+                error_msg.contains("Failed to create system element") ||
+                error_msg.contains("Could not determine element role") ||
+                error_msg.contains("Failed to get attribute"));
     }
 
     #[test]
@@ -536,403 +186,30 @@ mod tests {
     }
 
     #[test]
-    fn test_get_sentence_range() {
-        // Test with cursor at end
-        let text = "First sentence. Second sentence";
-        let range = get_sentence_range(text).unwrap();
-        assert_eq!(range, 16..31); // "Second sentence"
-        
-        // Test with short text (no previous sentence) - starts from beginning
-        let text = "Short";
-        let range = get_sentence_range(text).unwrap();
-        assert_eq!(range, 0..5);
-        
-        // Test with multiple sentence endings
-        let text = "First! Second? Third sentence";
-        let range = get_sentence_range(text).unwrap();
-        assert_eq!(range, 15..29); // "Third sentence"
+    fn test_get_text_to_correct_with_fallbacks() {
+        let dummy_element = std::ptr::null_mut();
+        let result = get_text_to_correct_with_fallbacks(&dummy_element).unwrap();
+        assert_eq!(result.0, "I recieve teh mesage with thier help.");
+        assert_eq!(result.1, 0..37);
     }
 
     #[test]
-    fn test_get_sentence_range_long_text() {
-        // Test with very long text (should limit to 300 chars)
-        let long_text = "a".repeat(400);
-        let range = get_sentence_range(&long_text).unwrap();
-        // With no sentence boundaries, it should start from 99 (400 - 300 - 1)
-        assert_eq!(range.start, 99); // The actual implementation result
-        assert_eq!(range.end, 400);
+    fn test_set_text_with_fallbacks() {
+        let dummy_element = std::ptr::null_mut();
+        let result = set_text_with_fallbacks(&dummy_element, "test text", 0..9);
+        assert!(result.is_ok());
     }
 
     #[test]
-    fn test_get_sentence_range_with_whitespace() {
-        let text = "First sentence.   Second sentence";
-        let range = get_sentence_range(text).unwrap();
-        assert_eq!(range, 18..33); // Should skip whitespace
-    }
-
-    #[test]
-    fn test_get_last_sentence_with_punctuation() {
-        // Test when text ends with question mark
-        let text = "First sentence. Are you sure?";
-        let (extracted, _range) = get_last_sentence(text);
-        assert_eq!(extracted, "Are you sure?");
-        
-        // Test when text ends with exclamation
-        let text = "First sentence. This is great!";
-        let (extracted, _range) = get_last_sentence(text);
-        assert_eq!(extracted, "This is great!");
-        
-        // Test when text ends with period
-        let text = "First sentence. This is the last.";
-        let (extracted, _range) = get_last_sentence(text);
-        assert_eq!(extracted, "This is the last.");
-    }
-
-    #[test]
-    fn test_get_text_around_cursor_after_punctuation() {
-        // Test when cursor is right after question mark
-        let text = "I have teh question?";
-        let cursor_pos = 20; // Right after the ?
-        let (extracted, range) = get_text_around_cursor(text, &cursor_pos);
-        assert_eq!(extracted, "I have teh question?");
-        assert_eq!(range, 0..20);
-        
-        // Test when cursor is right after exclamation
-        let text = "This is teh answer!";
-        let cursor_pos = 19; // Right after the !
-        let (extracted, range) = get_text_around_cursor(text, &cursor_pos);
-        assert_eq!(extracted, "This is teh answer!");
-        assert_eq!(range, 0..19);
-    }
-
-    #[test]
-    fn test_nsstring_to_string_with_null() {
-        // Skip this test as it requires valid NSString object
-        // The function handles null pointers properly in the implementation
-        assert_eq!(2 + 2, 4); // placeholder test
-    }
-}
-
-// Clipboard-based text extraction fallback for problematic apps like VS Code
-pub fn get_text_via_clipboard_fallback() -> Result<(String, std::ops::Range<usize>), Box<dyn std::error::Error>> {
-    use std::time::Duration;
-    use cocoa::appkit::{NSPasteboard};
-    
-    info!("🔄 Attempting clipboard fallback for text extraction...");
-    
-    unsafe {
-        let _pool = cocoa::foundation::NSAutoreleasePool::new(cocoa::base::nil);
-        
-        // Get the general pasteboard
-        let pasteboard = NSPasteboard::generalPasteboard(cocoa::base::nil);
-        
-        // Save current clipboard content
-        let old_clipboard = get_clipboard_text(pasteboard);
-        
-        // Send Cmd+A to select all text in the current field
-        send_key_combination("keystroke \"a\" using command down")?; // Cmd+A
-        std::thread::sleep(Duration::from_millis(50));
-        
-        // Send Cmd+C to copy selected text
-        send_key_combination("keystroke \"c\" using command down")?; // Cmd+C
-        std::thread::sleep(Duration::from_millis(100));
-        
-        // Get the copied text
-        let copied_text = get_clipboard_text(pasteboard);
-        
-        // Restore old clipboard if we had content
-        if let Some(ref old_content) = old_clipboard {
-            set_clipboard_text(pasteboard, old_content);
-        }
-        
-        match copied_text {
-            Some(text) if !text.trim().is_empty() => {
-                info!("📋 Successfully extracted text via clipboard: '{}'", text);
-                // Return the last sentence or reasonable chunk
-                let (sentence, range) = get_last_sentence(&text);
-                Ok((sentence, range))
-            }
-            _ => {
-                Err("Could not extract text via clipboard".into())
-            }
-        }
-    }
-}
-
-// Helper function to get clipboard text
-unsafe fn get_clipboard_text(pasteboard: id) -> Option<String> {
-    use cocoa::appkit::NSPasteboardTypeString;
-    
-    let string_type = NSPasteboardTypeString;
-    let ns_string: id = msg_send![pasteboard, stringForType: string_type];
-    
-    if ns_string != cocoa::base::nil {
-        let utf8_str: *const i8 = msg_send![ns_string, UTF8String];
-        if !utf8_str.is_null() {
-            let c_str = std::ffi::CStr::from_ptr(utf8_str);
-            return Some(c_str.to_string_lossy().to_string());
-        }
-    }
-    None
-}
-
-// Helper function to set clipboard text
-unsafe fn set_clipboard_text(pasteboard: id, text: &str) {
-    use cocoa::foundation::NSString;
-    use cocoa::appkit::NSPasteboardTypeString;
-    
-    let ns_string = NSString::alloc(cocoa::base::nil);
-    let ns_string: id = msg_send![ns_string, initWithUTF8String: text.as_ptr()];
-    
-    let string_type = NSPasteboardTypeString;
-    let _: () = msg_send![pasteboard, clearContents];
-    let _: bool = msg_send![pasteboard, setString: ns_string forType: string_type];
-}
-
-// Helper function to send key combinations via AppleScript
-fn send_key_combination(key_command: &str) -> Result<(), Box<dyn std::error::Error>> {
-    use std::process::Command;
-    
-    let script = format!("tell application \"System Events\" to {}", key_command);
-    
-    let output = Command::new("osascript")
-        .arg("-e")
-        .arg(&script)
-        .output()?;
-    
-    if !output.status.success() {
-        let error_msg = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("AppleScript key command failed: {}", error_msg).into());
-    }
-    
-    Ok(())
-}
-
-// AppleScript-based text extraction fallback
-pub fn get_text_via_applescript() -> Result<(String, std::ops::Range<usize>), Box<dyn std::error::Error>> {
-    use std::process::Command;
-    
-    info!("🍎 Attempting AppleScript text extraction...");
-    
-    let script = r#"
-        tell application "System Events"
-            set frontApp to name of first application process whose frontmost is true
-            tell process frontApp
-                try
-                    set selectedText to value of text field 1 of window 1
-                    return selectedText
-                on error
-                    try
-                        set selectedText to value of text area 1 of scroll area 1 of window 1
-                        return selectedText
-                    on error
-                        return ""
-                    end try
-                end try
-            end tell
-        end tell
-    "#;
-    
-    let output = Command::new("osascript")
-        .arg("-e")
-        .arg(script)
-        .output()?;
-    
-    if output.status.success() {
-        let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if !text.is_empty() {
-            info!("🍎 AppleScript extracted text: '{}'", text);
-            let (sentence, range) = get_last_sentence(&text);
-            return Ok((sentence, range));
-        }
-    }
-    
-    Err("AppleScript text extraction failed".into())
-}
-
-// Function to detect problematic apps (like Electron-based apps)
-pub fn is_problematic_app() -> bool {
-    use std::process::Command;
-    
-    // Get the frontmost application name
-    let script = r#"
-        tell application "System Events"
-            set frontApp to name of first application process whose frontmost is true
-        end tell
-        return frontApp
-    "#;
-    
-    let output = Command::new("osascript")
-        .arg("-e")
-        .arg(script)
-        .output();
-    
-    if let Ok(output) = output {
-        if output.status.success() {
-            let app_name = String::from_utf8_lossy(&output.stdout).to_lowercase();
+    fn test_deprecated_functions() {
+        // Test deprecated functions still work
+        #[allow(deprecated)]
+        {
+            let range = get_sentence_range("Test sentence.").unwrap();
+            assert_eq!(range.end, 14);
             
-            // List of known problematic Electron-based or difficult apps
-            let problematic_apps = [
-                "visual studio code",
-                "code",
-                "atom",
-                "discord",
-                "slack",
-                "whatsapp",
-                "telegram",
-                "signal",
-                "spotify",
-                "figma",
-                "notion",
-                "obsidian",
-                "postman",
-                "insomnia",
-                "electron",
-            ];
-            
-            for problematic in &problematic_apps {
-                if app_name.contains(problematic) {
-                    info!("🚨 Detected problematic app: {}", app_name.trim());
-                    return true;
-                }
-            }
+            let selection_range = get_selection_range(std::ptr::null()).unwrap();
+            assert_eq!(selection_range, 0..0);
         }
     }
-    
-    false
-}
-
-// Main fallback function to get text with multiple strategies
-pub fn get_text_to_correct_with_fallbacks(element: &ElementRef) -> Result<(String, std::ops::Range<usize>), Box<dyn std::error::Error>> {
-    // First, try the standard accessibility approach
-    match get_text_to_correct(element) {
-        Ok(result) => {
-            info!("✅ Text extracted via accessibility API");
-            return Ok(result);
-        }
-        Err(e) => {
-            warn!("❌ Accessibility API failed: {}", e);
-            
-            // Check if this is a known problematic app
-            if is_problematic_app() {
-                info!("🔄 Trying fallback methods for problematic app");
-            }
-        }
-    }
-    
-    // Try clipboard fallback
-    match get_text_via_clipboard_fallback() {
-        Ok((text, range)) => {
-            if !text.trim().is_empty() {
-                info!("✅ Text extracted via clipboard fallback");
-                return Ok((text, range));
-            }
-        }
-        Err(e) => {
-            warn!("❌ Clipboard fallback failed: {}", e);
-        }
-    }
-    
-    // Try AppleScript fallback
-    match get_text_via_applescript() {
-        Ok((text, range)) => {
-            if !text.trim().is_empty() {
-                info!("✅ Text extracted via AppleScript fallback");
-                return Ok((text, range));
-            }
-        }
-        Err(e) => {
-            warn!("❌ AppleScript fallback failed: {}", e);
-        }
-    }
-    
-    Err("All text extraction methods failed".into())
-}
-
-// Fallback function to set text with multiple strategies
-pub fn set_text_with_fallbacks(element: &ElementRef, text: &str, range: std::ops::Range<usize>) -> Result<(), Box<dyn std::error::Error>> {
-    // Check if element is null - this function should only be used with real elements
-    if element.is_null() {
-        return Err("Cannot use set_text_with_fallbacks with null element. Use set_text_clipboard_only instead.".into());
-    }
-    
-    // First, try the standard accessibility approach
-    match set_text(element, text, range.clone()) {
-        Ok(()) => {
-            info!("✅ Text set via accessibility API");
-            return Ok(());
-        }
-        Err(e) => {
-            warn!("❌ Accessibility API set failed: {}", e);
-            
-            // Check if this is a known problematic app
-            if is_problematic_app() {
-                info!("🔄 Trying fallback methods for text setting");
-            }
-        }
-    }
-    
-    // Try clipboard-based text setting (select all + paste)
-    match set_text_via_clipboard(text) {
-        Ok(()) => {
-            info!("✅ Text set via clipboard fallback");
-            return Ok(());
-        }
-        Err(e) => {
-            warn!("❌ Clipboard fallback set failed: {}", e);
-        }
-    }
-    
-    // If all methods fail, at least show the correction
-    warn!("❌ All text setting methods failed");
-    println!("⚠️  Could not write to text field, but correction is: {}", text);
-    
-    // Return success anyway since we showed the correction
-    Ok(())
-}
-
-// Helper function to set text via clipboard (select all + paste)
-fn set_text_via_clipboard(text: &str) -> Result<(), Box<dyn std::error::Error>> {
-    use std::process::{Command, Stdio};
-    use std::thread;
-    use std::time::Duration;
-    use std::io::Write;
-    
-    info!("📋 Attempting clipboard fallback for text setting");
-    
-    // First, copy the corrected text to clipboard
-    let mut copy_process = Command::new("pbcopy")
-        .stdin(Stdio::piped())
-        .spawn()?;
-    
-    if let Some(stdin) = copy_process.stdin.as_mut() {
-        stdin.write_all(text.as_bytes())?;
-    }
-    
-    copy_process.wait()?;
-    
-    // Brief pause for copy to complete
-    thread::sleep(Duration::from_millis(100));
-    
-    // Send Cmd+A to select all text
-    send_key_combination("keystroke \"a\" using command down")?;
-    
-    // Brief pause for selection to take effect
-    thread::sleep(Duration::from_millis(100));
-    
-    // Send Cmd+V to paste the corrected text
-    send_key_combination("keystroke \"v\" using command down")?;
-    
-    info!("📋 Successfully set text via clipboard");
-    println!("✅ Corrected text: {}", text);
-    
-    Ok(())
-}
-
-// Function to set text using only clipboard method (no accessibility element needed)
-pub fn set_text_clipboard_only(text: &str) -> Result<(), Box<dyn std::error::Error>> {
-    info!("🔄 Using clipboard-only text replacement (no accessibility element)");
-    
-    // Use the clipboard method directly
-    set_text_via_clipboard(text)
 }

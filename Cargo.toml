@@ -5,6 +5,9 @@ edition = "2021"
 
 [dependencies]
 # Use cocoa for now - it's more mature for this use case
+objc2 = "0.6"
+objc2-foundation = "0.3.1"
+objc2-app-kit = "0.3"
 cocoa = "0.26.1"
 objc = "0.2.7"
 core-foundation = "0.10.1"

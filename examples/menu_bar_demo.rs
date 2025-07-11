@@ -32,8 +32,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
     
     // Run the event loop (this blocks until the app terminates)
-    let menu_bar = typo_fixer::menu_bar::get_menu_bar()?;
-    menu_bar.run_event_loop();
+    let menu_bar = typo_fixer::menu_bar::get_menu_bar();
+    let mtm = objc2_foundation::MainThreadMarker::new().expect("must run on main thread");
+    menu_bar.lock().unwrap().run_event_loop(mtm);
+    
+    Ok(())
 }
 
 // Note: This module path needs to be adjusted based on your project structure

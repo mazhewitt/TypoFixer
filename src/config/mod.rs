@@ -42,6 +42,7 @@ impl Config {
         config
     }
     
+    #[allow(dead_code)]
     pub fn save(&self) -> Result<(), Box<dyn std::error::Error>> {
         let mut doc = toml_edit::DocumentMut::new();
         doc["model_path"] = toml_edit::value(self.model_path.to_string_lossy().to_string());
