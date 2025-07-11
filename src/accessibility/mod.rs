@@ -9,7 +9,7 @@ pub mod fallbacks;
 // Re-export commonly used types and functions
 pub use ax_api::{ElementRef, AxApi};
 pub use text_extraction::TextExtractor;
-pub use clipboard::ClipboardManager;
+pub use clipboard::{ClipboardManager, SystemClipboard};
 pub use applescript::AppleScriptManager;
 pub use fallbacks::FallbackManager;
 
@@ -94,7 +94,8 @@ pub fn set_text_with_fallbacks(element: &ElementRef, text: &str, range: Range<us
 
 /// Extract text via clipboard fallback
 pub fn get_text_via_clipboard_fallback() -> Result<(String, Range<usize>), Box<dyn std::error::Error>> {
-    let text = ClipboardManager::extract_text_via_clipboard()?;
+    let clipboard_manager = ClipboardManager::new(SystemClipboard);
+    let text = clipboard_manager.extract_text_via_clipboard()?;
     let (sentence, range) = TextExtractor::extract_last_sentence(&text);
     Ok((sentence, range))
 }

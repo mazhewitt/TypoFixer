@@ -8,12 +8,28 @@ use std::thread;
 use std::time::Duration;
 use tracing::info;
 
-/// Clipboard operations for text extraction and setting
-pub struct ClipboardManager;
+#[cfg(test)]
+use mockall::automock;
 
-impl ClipboardManager {
+/// Trait for clipboard backend operations
+#[cfg_attr(test, automock)]
+pub trait ClipboardBackend {
     /// Get current clipboard text content
-    pub fn get_text() -> Result<Option<String>, Box<dyn std::error::Error>> {
+    fn get_text(&self) -> Result<Option<String>, Box<dyn std::error::Error>>;
+    
+    /// Set clipboard text content
+    fn set_text(&self, text: &str) -> Result<(), Box<dyn std::error::Error>>;
+    
+    /// Send a key command (e.g., "keystroke \"c\" using command down")
+    fn send_key(&self, key_command: &str) -> Result<(), Box<dyn std::error::Error>>;
+}
+
+/// System clipboard implementation using Cocoa/AppleScript
+pub struct SystemClipboard;
+
+impl ClipboardBackend for SystemClipboard {
+    /// Get current clipboard text content
+    fn get_text(&self) -> Result<Option<String>, Box<dyn std::error::Error>> {
         unsafe {
             let _pool = cocoa::foundation::NSAutoreleasePool::new(cocoa::base::nil);
             let pasteboard = NSPasteboard::generalPasteboard(cocoa::base::nil);
@@ -22,7 +38,7 @@ impl ClipboardManager {
     }
 
     /// Set clipboard text content
-    pub fn set_text(text: &str) -> Result<(), Box<dyn std::error::Error>> {
+    fn set_text(&self, text: &str) -> Result<(), Box<dyn std::error::Error>> {
         unsafe {
             let _pool = cocoa::foundation::NSAutoreleasePool::new(cocoa::base::nil);
             let pasteboard = NSPasteboard::generalPasteboard(cocoa::base::nil);
@@ -31,81 +47,8 @@ impl ClipboardManager {
         }
     }
 
-    /// Extract text from current focused field via clipboard
-    pub fn extract_text_via_clipboard() -> Result<String, Box<dyn std::error::Error>> {
-        info!("🔄 Attempting clipboard fallback for text extraction...");
-        
-        // Save current clipboard content
-        let old_clipboard = Self::get_text()?;
-        
-        // Select all text and copy
-        Self::send_select_all()?;
-        thread::sleep(Duration::from_millis(50));
-        
-        Self::send_copy()?;
-        thread::sleep(Duration::from_millis(100));
-        
-        // Get the copied text
-        let copied_text = Self::get_text()?;
-        
-        // Restore old clipboard content
-        if let Some(old_content) = old_clipboard {
-            Self::set_text(&old_content)?;
-        }
-        
-        match copied_text {
-            Some(text) if !text.trim().is_empty() => {
-                info!("📋 Successfully extracted text via clipboard: '{}'", text);
-                Ok(text)
-            }
-            _ => Err("Could not extract text via clipboard".into())
-        }
-    }
-
-    /// Set text in focused field via clipboard (select all + paste)
-    pub fn set_text_via_clipboard(text: &str) -> Result<(), Box<dyn std::error::Error>> {
-        info!("📋 Attempting clipboard fallback for text setting");
-        
-        // Copy corrected text to clipboard
-        let mut copy_process = Command::new("pbcopy")
-            .stdin(Stdio::piped())
-            .spawn()?;
-        
-        if let Some(stdin) = copy_process.stdin.as_mut() {
-            stdin.write_all(text.as_bytes())?;
-        }
-        
-        copy_process.wait()?;
-        thread::sleep(Duration::from_millis(100));
-        
-        // Select all and paste
-        Self::send_select_all()?;
-        thread::sleep(Duration::from_millis(100));
-        
-        Self::send_paste()?;
-        
-        info!("📋 Successfully set text via clipboard");
-        println!("✅ Corrected text: {}", text);
-        Ok(())
-    }
-
-    /// Send Cmd+A (select all) key combination
-    fn send_select_all() -> Result<(), Box<dyn std::error::Error>> {
-        Self::send_key_combination("keystroke \"a\" using command down")
-    }
-
-    /// Send Cmd+C (copy) key combination
-    fn send_copy() -> Result<(), Box<dyn std::error::Error>> {
-        Self::send_key_combination("keystroke \"c\" using command down")
-    }
-
-    /// Send Cmd+V (paste) key combination
-    fn send_paste() -> Result<(), Box<dyn std::error::Error>> {
-        Self::send_key_combination("keystroke \"v\" using command down")
-    }
-
     /// Send key combination via AppleScript
-    fn send_key_combination(key_command: &str) -> Result<(), Box<dyn std::error::Error>> {
+    fn send_key(&self, key_command: &str) -> Result<(), Box<dyn std::error::Error>> {
         let script = format!("tell application \"System Events\" to {}", key_command);
         
         let output = Command::new("osascript")
@@ -120,7 +63,9 @@ impl ClipboardManager {
         
         Ok(())
     }
+}
 
+impl SystemClipboard {
     /// Get text from pasteboard (unsafe helper)
     unsafe fn get_clipboard_text(pasteboard: id) -> Option<String> {
         use cocoa::appkit::NSPasteboardTypeString;
@@ -152,35 +97,193 @@ impl ClipboardManager {
     }
 }
 
+/// Clipboard operations manager that works with any backend
+pub struct ClipboardManager<B: ClipboardBackend> {
+    backend: B,
+}
+
+impl<B: ClipboardBackend> ClipboardManager<B> {
+    /// Create a new ClipboardManager with the given backend
+    pub fn new(backend: B) -> Self {
+        Self { backend }
+    }
+
+    /// Get current clipboard text content
+    pub fn get_text(&self) -> Result<Option<String>, Box<dyn std::error::Error>> {
+        self.backend.get_text()
+    }
+
+    /// Set clipboard text content
+    pub fn set_text(&self, text: &str) -> Result<(), Box<dyn std::error::Error>> {
+        self.backend.set_text(text)
+    }
+
+    /// Extract text from current focused field via clipboard
+    pub fn extract_text_via_clipboard(&self) -> Result<String, Box<dyn std::error::Error>> {
+        info!("🔄 Attempting clipboard fallback for text extraction...");
+        
+        // Save current clipboard content
+        let old_clipboard = self.get_text()?;
+        
+        // Select all text and copy
+        self.send_select_all()?;
+        thread::sleep(Duration::from_millis(50));
+        
+        self.send_copy()?;
+        thread::sleep(Duration::from_millis(100));
+        
+        // Get the copied text
+        let copied_text = self.get_text()?;
+        
+        // Restore old clipboard content
+        if let Some(old_content) = old_clipboard {
+            self.set_text(&old_content)?;
+        }
+        
+        match copied_text {
+            Some(text) if !text.trim().is_empty() => {
+                info!("📋 Successfully extracted text via clipboard: '{}'", text);
+                Ok(text)
+            }
+            _ => Err("Could not extract text via clipboard".into())
+        }
+    }
+
+    /// Set text in focused field via clipboard (select all + paste)
+    pub fn set_text_via_clipboard(&self, text: &str) -> Result<(), Box<dyn std::error::Error>> {
+        info!("📋 Attempting clipboard fallback for text setting");
+        
+        // Copy corrected text to clipboard
+        let mut copy_process = Command::new("pbcopy")
+            .stdin(Stdio::piped())
+            .spawn()?;
+        
+        if let Some(stdin) = copy_process.stdin.as_mut() {
+            stdin.write_all(text.as_bytes())?;
+        }
+        
+        copy_process.wait()?;
+        thread::sleep(Duration::from_millis(100));
+        
+        // Select all and paste
+        self.send_select_all()?;
+        thread::sleep(Duration::from_millis(100));
+        
+        self.send_paste()?;
+        
+        info!("📋 Successfully set text via clipboard");
+        println!("✅ Corrected text: {}", text);
+        Ok(())
+    }
+
+    /// Send Cmd+A (select all) key combination
+    fn send_select_all(&self) -> Result<(), Box<dyn std::error::Error>> {
+        self.backend.send_key("keystroke \"a\" using command down")
+    }
+
+    /// Send Cmd+C (copy) key combination
+    fn send_copy(&self) -> Result<(), Box<dyn std::error::Error>> {
+        self.backend.send_key("keystroke \"c\" using command down")
+    }
+
+    /// Send Cmd+V (paste) key combination
+    fn send_paste(&self) -> Result<(), Box<dyn std::error::Error>> {
+        self.backend.send_key("keystroke \"v\" using command down")
+    }
+}
+
+/// Type alias for the default system clipboard manager
+pub type DefaultClipboardManager = ClipboardManager<SystemClipboard>;
+
+impl DefaultClipboardManager {
+    /// Create a new default clipboard manager with system clipboard
+    pub fn new_system() -> Self {
+        Self::new(SystemClipboard)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_clipboard_operations() {
-        // Test setting and getting clipboard text
-        let test_text = "Test clipboard content";
+        let mut mock_backend = MockClipboardBackend::new();
         
-        // Set text
-        let set_result = ClipboardManager::set_text(test_text);
-        assert!(set_result.is_ok());
+        // Set up expectations
+        mock_backend
+            .expect_get_text()
+            .returning(|| Ok(Some("test content".to_string())));
         
-        // Get text
-        let get_result = ClipboardManager::get_text();
-        assert!(get_result.is_ok());
+        mock_backend
+            .expect_set_text()
+            .with(mockall::predicate::eq("hello"))
+            .returning(|_| Ok(()));
         
-        // Note: We can't reliably test the actual clipboard content in CI
-        // since it depends on system permissions and state
+        let manager = ClipboardManager::new(mock_backend);
+        
+        // Test get_text
+        let result = manager.get_text().unwrap();
+        assert_eq!(result, Some("test content".to_string()));
+        
+        // Test set_text
+        assert!(manager.set_text("hello").is_ok());
     }
 
     #[test]
-    #[ignore]
     fn test_extract_text_via_clipboard_without_permissions() {
-        // This test will likely fail in CI without proper permissions
-        // which is expected behavior
-        let result = ClipboardManager::extract_text_via_clipboard();
-        // We just verify it returns some result (either success or expected failure)
-        assert!(result.is_ok() || result.is_err());
+        let mut mock_backend = MockClipboardBackend::new();
+        
+        // Set up expectations for the clipboard extraction sequence
+        mock_backend
+            .expect_get_text()
+            .times(2)
+            .returning(|| Ok(Some("hello".to_string())));
+        
+        mock_backend
+            .expect_send_key()
+            .with(mockall::predicate::eq("keystroke \"a\" using command down"))
+            .times(1)
+            .returning(|_| Ok(()));
+        
+        mock_backend
+            .expect_send_key()
+            .with(mockall::predicate::eq("keystroke \"c\" using command down"))
+            .times(1)
+            .returning(|_| Ok(()));
+        
+        mock_backend
+            .expect_set_text()
+            .with(mockall::predicate::eq("hello"))
+            .times(1)
+            .returning(|_| Ok(()));
+        
+        let manager = ClipboardManager::new(mock_backend);
+        
+        let result = manager.extract_text_via_clipboard();
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "hello");
+    }
+
+    #[test]
+    fn test_set_text_clipboard_only() {
+        let mut mock_backend = MockClipboardBackend::new();
+        
+        mock_backend
+            .expect_send_key()
+            .with(mockall::predicate::eq("keystroke \"a\" using command down"))
+            .times(1)
+            .returning(|_| Ok(()));
+        
+        mock_backend
+            .expect_send_key()
+            .with(mockall::predicate::eq("keystroke \"v\" using command down"))
+            .times(1)
+            .returning(|_| Ok(()));
+        
+        let manager = ClipboardManager::new(mock_backend);
+        
+        let result = manager.set_text_via_clipboard("test text");
+        assert!(result.is_ok());
     }
 }

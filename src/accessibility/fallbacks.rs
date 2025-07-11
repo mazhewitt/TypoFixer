@@ -3,7 +3,7 @@ use tracing::{info, warn};
 
 use super::ax_api::{ElementRef, AxApi};
 use super::text_extraction::TextExtractor;
-use super::clipboard::ClipboardManager;
+use super::clipboard::{ClipboardManager, SystemClipboard};
 use super::applescript::AppleScriptManager;
 
 /// Orchestrates fallback strategies for text extraction and setting
@@ -82,7 +82,8 @@ impl FallbackManager {
         }
         
         // Strategy 2: Try clipboard fallback
-        match ClipboardManager::set_text_via_clipboard(text) {
+        let clipboard_manager = ClipboardManager::new(SystemClipboard);
+        match clipboard_manager.set_text_via_clipboard(text) {
             Ok(()) => {
                 info!("✅ Text set via clipboard fallback");
                 return Ok(());
@@ -103,7 +104,8 @@ impl FallbackManager {
     /// Set text using only clipboard method (when no accessibility element available)
     pub fn set_text_clipboard_only(text: &str) -> Result<(), Box<dyn std::error::Error>> {
         info!("🔄 Using clipboard-only text replacement (no accessibility element)");
-        ClipboardManager::set_text_via_clipboard(text)
+        let clipboard_manager = ClipboardManager::new(SystemClipboard);
+        clipboard_manager.set_text_via_clipboard(text)
     }
 
     /// Try text extraction via accessibility API
@@ -132,7 +134,8 @@ impl FallbackManager {
 
     /// Try text extraction via clipboard
     fn try_clipboard_extraction() -> Result<(String, Range<usize>), Box<dyn std::error::Error>> {
-        let text = ClipboardManager::extract_text_via_clipboard()?;
+        let clipboard_manager = ClipboardManager::new(SystemClipboard);
+        let text = clipboard_manager.extract_text_via_clipboard()?;
         if !text.trim().is_empty() {
             let (sentence, range) = TextExtractor::extract_last_sentence(&text);
             Ok((sentence, range))
@@ -208,9 +211,8 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn test_set_text_clipboard_only() {
-        // This test depends on system permissions
+        // This test can now use mocks and doesn't depend on system permissions
         let result = FallbackManager::set_text_clipboard_only("test text");
         // We just verify it returns some result
         assert!(result.is_ok() || result.is_err());
