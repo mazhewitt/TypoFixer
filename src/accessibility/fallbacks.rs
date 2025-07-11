@@ -208,6 +208,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn test_set_text_clipboard_only() {
         // This test depends on system permissions
         let result = FallbackManager::set_text_clipboard_only("test text");

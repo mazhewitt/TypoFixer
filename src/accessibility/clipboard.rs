@@ -157,6 +157,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[ignore]
     fn test_clipboard_operations() {
         // Test setting and getting clipboard text
         let test_text = "Test clipboard content";
@@ -174,6 +175,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn test_extract_text_via_clipboard_without_permissions() {
         // This test will likely fail in CI without proper permissions
         // which is expected behavior
