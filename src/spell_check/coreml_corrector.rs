@@ -49,6 +49,15 @@ impl CoreMLCorrector {
     /// Load the Core ML model
     #[allow(dead_code)]
     fn load_model(&mut self) -> Result<()> {
+        // First, check for pre-compiled model from build script
+        if let Some(compiled_path) = Self::get_precompiled_model_path() {
+            info!("🚀 Found pre-compiled Core ML model at: {}", compiled_path);
+            return self.load_compiled_model(&compiled_path);
+        }
+        
+        // Fallback to runtime compilation
+        info!("📦 No pre-compiled model found, attempting runtime loading/compilation");
+        
         // Create model URL from path
         let model_path = Path::new(&self.model_path);
         if !model_path.exists() {
@@ -93,6 +102,38 @@ impl CoreMLCorrector {
                         Err(anyhow::anyhow!("Failed to compile and load Core ML model. Original error: {:?}, Compile error: {:?}", e, compile_error))
                     }
                 }
+            }
+        }
+    }
+    
+    /// Get the path to the pre-compiled model if it exists
+    fn get_precompiled_model_path() -> Option<String> {
+        // Check if build script provided a compiled model path
+        if let Some(compiled_path) = option_env!("COMPILED_MODEL_PATH") {
+            if !compiled_path.is_empty() {
+                let path = Path::new(compiled_path);
+                if path.exists() {
+                    return Some(compiled_path.to_string());
+                }
+            }
+        }
+        None
+    }
+    
+    /// Load a pre-compiled Core ML model
+    fn load_compiled_model(&mut self, compiled_path: &str) -> Result<()> {
+        let ns_path = NSString::from_str(compiled_path);
+        let model_url = unsafe { NSURL::fileURLWithPath(&ns_path) };
+        
+        // Load the pre-compiled model directly
+        match unsafe { MLModel::modelWithContentsOfURL_error(&model_url) } {
+            Ok(model) => {
+                self.model = Some(model);
+                info!("✅ Pre-compiled Core ML model loaded successfully!");
+                Ok(())
+            }
+            Err(e) => {
+                Err(anyhow::anyhow!("Failed to load pre-compiled Core ML model: {:?}", e))
             }
         }
     }
