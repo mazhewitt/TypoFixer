@@ -183,10 +183,12 @@ impl<B: ClipboardBackend> ClipboardManager<B> {
 }
 
 /// Type alias for the default system clipboard manager
+#[allow(dead_code)]
 pub type DefaultClipboardManager = ClipboardManager<SystemClipboard>;
 
 impl DefaultClipboardManager {
     /// Create a new default clipboard manager with system clipboard
+    #[allow(dead_code)]
     pub fn new_system() -> Self {
         Self::new(SystemClipboard)
     }

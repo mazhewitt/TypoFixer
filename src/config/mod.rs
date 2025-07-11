@@ -9,9 +9,12 @@ pub struct Config {
 
 impl Default for Config {
     fn default() -> Self {
+        // Use the Core ML model path by default
+        let default_model_path = PathBuf::from("coreml-setup/coreml-setup/coreml-OpenELM-450M-Instruct/OpenELM-450M-Instruct-128-float32.mlpackage");
+        
         let home = std::env::var("HOME").unwrap_or_else(|_| "/Users/user".to_string());
         Self {
-            model_path: PathBuf::from(&home).join("Models/llama3-8b-q4.gguf"),
+            model_path: default_model_path,
             config_path: PathBuf::from(&home).join("Library/Application Support/TypoFixer/config.toml"),
         }
     }
@@ -65,7 +68,7 @@ mod tests {
     #[test]
     fn test_config_default() {
         let config = Config::default();
-        assert!(config.model_path.to_string_lossy().contains("llama3-8b-q4.gguf"));
+        assert!(config.model_path.to_string_lossy().contains("OpenELM-450M-Instruct-128-float32.mlpackage"));
         assert!(config.config_path.to_string_lossy().contains("config.toml"));
     }
 
@@ -83,9 +86,15 @@ mod tests {
         config.save().unwrap();
         assert!(config_path.exists());
         
-        // Test load
-        let loaded_config = Config::load();
-        // Note: load() creates a default config, so we need to test differently
-        assert!(loaded_config.model_path.to_string_lossy().contains("llama3-8b-q4.gguf"));
+        // Test that saved file contains the expected model path
+        let saved_content = fs::read_to_string(&config_path).unwrap();
+        assert!(saved_content.contains("test_model.gguf"));
+        
+        // Test load - first check default config
+        let default_config = Config::default();
+        assert!(default_config.model_path.to_string_lossy().contains("OpenELM-450M-Instruct-128-float32.mlpackage"));
+        
+        // Note: Config::load() reads from user's config file which may contain old settings
+        // So we don't test that here as it's environment-dependent
     }
 }

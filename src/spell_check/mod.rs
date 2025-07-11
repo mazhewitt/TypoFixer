@@ -7,11 +7,12 @@ pub mod coreml_corrector;
 pub use coreml_corrector::CoreMLCorrector;
 
 /// Supported correction engines
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 #[allow(dead_code)]
+#[allow(clippy::large_enum_variant)]
 pub enum CorrectionEngine {
     Ollama(LlamaModelWrapper),
-    CoreML(CoreMLCorrector),
+    CoreML(Box<CoreMLCorrector>),
 }
 
 impl CorrectionEngine {
@@ -191,10 +192,28 @@ impl LlamaModelWrapper {
     }
 }
 
+/// Create a Core ML correction engine (preferred method)
+pub fn create_coreml_engine(model_path: &Path) -> Result<CorrectionEngine, Box<dyn std::error::Error>> {
+    info!("Creating Core ML correction engine from: {}", model_path.display());
+    let corrector = CoreMLCorrector::new(model_path)?;
+    Ok(CorrectionEngine::CoreML(Box::new(corrector)))
+}
+
+/// Create an Ollama correction engine (fallback method)
+#[allow(dead_code)]
+pub fn create_ollama_engine(model_path: &Path) -> Result<CorrectionEngine, Box<dyn std::error::Error>> {
+    info!("Creating Ollama correction engine");
+    let wrapper = LlamaModelWrapper::new(model_path)?;
+    Ok(CorrectionEngine::Ollama(wrapper))
+}
+
+/// Deprecated: Use CorrectionEngine::generate_correction instead
+#[allow(dead_code)]
 pub fn generate_correction(
     text: &str, 
     model: &mut Option<LlamaModelWrapper>
 ) -> Result<String, Box<dyn std::error::Error>> {
+    info!("⚠️  Using deprecated generate_correction function");
     info!("Generating correction for: '{}'", text);
     
     if let Some(ref mut model) = model {

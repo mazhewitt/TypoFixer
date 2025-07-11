@@ -185,12 +185,14 @@ pub fn setup_menu_bar() -> Result<(), Box<dyn std::error::Error>> {
 
     let mtm = MainThreadMarker::new().expect("must run on main thread");
     // SAFETY: Safe because we initialize it in call_once above
+    #[allow(static_mut_refs)]
     let menu_bar = unsafe { MENU_BAR.as_ref().unwrap() };
     menu_bar.lock().unwrap().setup(mtm)
 }
 
 pub fn get_menu_bar() -> &'static Mutex<MenuBar> {
     // SAFETY: Safe because we initialize it in setup_menu_bar
+    #[allow(static_mut_refs)]
     unsafe { MENU_BAR.as_ref().expect("menu bar not initialised") }
 }
 

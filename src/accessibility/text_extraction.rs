@@ -5,6 +5,7 @@ pub struct TextExtractor;
 
 impl TextExtractor {
     /// Extract text around a cursor position with smart boundary detection
+    #[allow(dead_code)]
     pub fn extract_around_cursor(text: &str, cursor_pos: usize) -> (String, Range<usize>) {
         let cursor_pos = cursor_pos.min(text.len());
         let chars: Vec<char> = text.chars().collect();
@@ -36,6 +37,7 @@ impl TextExtractor {
     }
 
     /// Find smart boundaries around a cursor position
+    #[allow(dead_code)]
     fn find_sentence_boundaries(chars: &[char], cursor_pos: usize) -> (usize, usize) {
         let start = Self::find_sentence_start_from_cursor(chars, cursor_pos);
         let end = Self::find_sentence_end_from_cursor(chars, cursor_pos);
@@ -43,6 +45,7 @@ impl TextExtractor {
     }
 
     /// Find sentence start working backwards from cursor
+    #[allow(dead_code)]
     fn find_sentence_start_from_cursor(chars: &[char], cursor_pos: usize) -> usize {
         let mut start = 0;
         let max_lookback = 200;
@@ -80,6 +83,7 @@ impl TextExtractor {
     }
 
     /// Find sentence end working forwards from cursor
+    #[allow(dead_code)]
     fn find_sentence_end_from_cursor(chars: &[char], cursor_pos: usize) -> usize {
         let mut end = chars.len();
         let max_lookforward = 200;
@@ -151,6 +155,7 @@ impl TextExtractor {
     }
 
     /// Skip trailing whitespace and return new end position
+    #[allow(dead_code)]
     fn skip_trailing_whitespace(chars: &[char], end: usize) -> usize {
         let mut new_end = end;
         while new_end > 0 && chars[new_end - 1].is_whitespace() {

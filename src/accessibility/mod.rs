@@ -60,6 +60,7 @@ pub fn is_secure_field(element: &ElementRef) -> bool {
 }
 
 /// Extract text to be corrected from the given element
+#[allow(dead_code)]
 pub fn get_text_to_correct(element: &ElementRef) -> Result<(String, Range<usize>), Box<dyn std::error::Error>> {
     // Handle null element (testing scenario)
     if element.is_null() {
@@ -71,6 +72,7 @@ pub fn get_text_to_correct(element: &ElementRef) -> Result<(String, Range<usize>
 }
 
 /// Set corrected text in the given element
+#[allow(dead_code)]
 pub fn set_text(element: &ElementRef, text: &str, range: Range<usize>) -> Result<(), Box<dyn std::error::Error>> {
     // Handle null element (testing scenario)
     if element.is_null() {
@@ -113,6 +115,7 @@ pub fn set_text_clipboard_only(text: &str) -> Result<(), Box<dyn std::error::Err
 }
 
 /// Check if current app is problematic for accessibility
+#[allow(dead_code)]
 pub fn is_problematic_app() -> bool {
     AppleScriptManager::is_problematic_app()
 }

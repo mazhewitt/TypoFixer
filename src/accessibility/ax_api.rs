@@ -13,6 +13,7 @@ pub struct AxApi;
 
 impl AxApi {
     /// Safely wrap a CFString from a raw pointer
+    #[allow(dead_code)]
     pub fn wrap_cfstring(raw_ref: CFTypeRef) -> Option<CFString> {
         if raw_ref.is_null() {
             None
@@ -33,6 +34,7 @@ impl AxApi {
                 &mut value_ref
             );
             
+            #[allow(non_upper_case_globals)]
             match result {
                 kAXErrorSuccess => {
                     if value_ref.is_null() {
@@ -63,6 +65,7 @@ impl AxApi {
                 value
             );
             
+            #[allow(non_upper_case_globals)]
             match result {
                 kAXErrorSuccess => Ok(()),
                 _ => {
@@ -86,6 +89,7 @@ impl AxApi {
     }
 
     /// Get focused application from system element
+    #[allow(dead_code)]
     pub fn get_focused_application() -> AxResult<ElementRef> {
         let system_element = Self::get_system_element()?;
         
