@@ -3,6 +3,32 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
+pub mod coreml_corrector;
+pub use coreml_corrector::CoreMLCorrector;
+
+/// Supported correction engines
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub enum CorrectionEngine {
+    Ollama(LlamaModelWrapper),
+    CoreML(CoreMLCorrector),
+}
+
+impl CorrectionEngine {
+    /// Generate a correction using the selected engine
+    #[allow(dead_code)]
+    pub fn generate_correction(&mut self, text: &str) -> Result<String, Box<dyn std::error::Error>> {
+        match self {
+            CorrectionEngine::Ollama(ref mut model) => {
+                model.generate(text)
+            }
+            CorrectionEngine::CoreML(ref mut corrector) => {
+                corrector.correct(text).map_err(|e| e.into())
+            }
+        }
+    }
+}
+
 // Ollama API request/response structures
 #[derive(Debug, Serialize)]
 struct OllamaRequest {
@@ -27,6 +53,7 @@ struct OllamaResponse {
 }
 
 // Model wrapper for text correction using Ollama
+#[derive(Debug, Clone)]
 pub struct LlamaModelWrapper {
     client: Client,
     model_name: String,
