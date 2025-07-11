@@ -2,8 +2,7 @@ use cocoa::base::id;
 use cocoa::appkit::NSPasteboard;
 use objc::{msg_send, sel, sel_impl};
 use std::ffi;
-use std::io::Write;
-use std::process::{Command, Stdio};
+use std::process::Command;
 use std::thread;
 use std::time::Duration;
 use tracing::info;
@@ -153,16 +152,8 @@ impl<B: ClipboardBackend> ClipboardManager<B> {
     pub fn set_text_via_clipboard(&self, text: &str) -> Result<(), Box<dyn std::error::Error>> {
         info!("📋 Attempting clipboard fallback for text setting");
         
-        // Copy corrected text to clipboard
-        let mut copy_process = Command::new("pbcopy")
-            .stdin(Stdio::piped())
-            .spawn()?;
-        
-        if let Some(stdin) = copy_process.stdin.as_mut() {
-            stdin.write_all(text.as_bytes())?;
-        }
-        
-        copy_process.wait()?;
+        // Copy corrected text to clipboard using the backend
+        self.set_text(text)?;
         thread::sleep(Duration::from_millis(100));
         
         // Select all and paste
@@ -269,12 +260,21 @@ mod tests {
     fn test_set_text_clipboard_only() {
         let mut mock_backend = MockClipboardBackend::new();
         
+        // Expect set_text to be called first to copy text to clipboard
+        mock_backend
+            .expect_set_text()
+            .with(mockall::predicate::eq("test text"))
+            .times(1)
+            .returning(|_| Ok(()));
+        
+        // Expect send_key to be called for select all (Cmd+A)
         mock_backend
             .expect_send_key()
             .with(mockall::predicate::eq("keystroke \"a\" using command down"))
             .times(1)
             .returning(|_| Ok(()));
         
+        // Expect send_key to be called for paste (Cmd+V)
         mock_backend
             .expect_send_key()
             .with(mockall::predicate::eq("keystroke \"v\" using command down"))
