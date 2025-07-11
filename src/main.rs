@@ -33,22 +33,18 @@ static CONFIG: Lazy<Arc<RwLock<Config>>> = Lazy::new(|| Arc::new(RwLock::new(Con
 fn handle_hotkey_press() {
     let start = Instant::now();
     
-    println!("🎯 HOTKEY PRESSED! Processing text correction...");
     info!("🎯 HOTKEY PRESSED! Processing text correction...");
     
     match process_text_correction() {
         Ok(true) => {
             show_hud("Fixed ✓");
             info!("Text correction successful in {:?}", start.elapsed());
-            println!("✅ Text correction successful!");
         }
         Ok(false) => {
             debug!("No correction needed");
-            println!("ℹ️ No correction needed");
         }
         Err(e) => {
             error!("Text correction failed: {}", e);
-            println!("❌ Text correction failed: {}", e);
             beep();
             log_error(&format!("Text correction failed: {}", e));
         }
@@ -159,14 +155,14 @@ fn process_text_correction() -> Result<bool, Box<dyn std::error::Error>> {
 
 #[allow(dead_code)]
 fn show_hud(message: &str) {
-    // Mock implementation - just print to console
-    println!("HUD: {}", message);
+    // Mock implementation - use logging instead of terminal output
+    info!("HUD: {}", message);
 }
 
 #[allow(dead_code)]
 fn beep() {
-    // Mock implementation - just print to console
-    println!("BEEP!");
+    // Mock implementation - use logging instead of terminal output
+    warn!("BEEP!");
 }
 
 fn log_error(message: &str) {
@@ -253,6 +249,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // This test calls real system functions that trigger Cmd+A key combinations
     fn test_process_text_correction_secure_field() {
         // Set up a model first
         let (_temp_dir, model_path) = create_temp_model_file();

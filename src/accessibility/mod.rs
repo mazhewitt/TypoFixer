@@ -170,7 +170,7 @@ mod tests {
         let result = get_focused_element();
         assert!(result.is_err());
         let error_msg = result.unwrap_err().to_string();
-        println!("Actual error message: '{}'", error_msg);
+        // Removed println! to avoid terminal output in tests
         assert!(error_msg.contains("Accessibility permissions not granted") || 
                 error_msg.contains("No focused application found") ||
                 error_msg.contains("Failed to get focused application") ||

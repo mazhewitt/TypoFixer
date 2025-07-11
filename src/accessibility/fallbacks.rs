@@ -62,7 +62,6 @@ impl FallbackManager {
         // Handle null element (testing scenario)
         if element.is_null() {
             info!("📝 Mock set text: '{}'", text);
-            println!("✅ Mock corrected text: {}", text);
             return Ok(());
         }
         
@@ -95,7 +94,7 @@ impl FallbackManager {
         
         // If all methods fail, at least show the correction
         warn!("❌ All text setting methods failed");
-        println!("⚠️  Could not write to text field, but correction is: {}", text);
+        warn!("⚠️  Could not write to text field, but correction is: {}", text);
         
         // Return success anyway since we showed the correction
         Ok(())
@@ -161,7 +160,6 @@ impl FallbackManager {
         match AxApi::set_text_value(*element, text) {
             Ok(()) => {
                 info!("📝 Successfully set text via AXValue: '{}'", text);
-                println!("✅ Corrected text: {}", text);
                 return Ok(());
             }
             Err(e) => {
@@ -173,7 +171,6 @@ impl FallbackManager {
         match AxApi::set_selected_text(*element, text) {
             Ok(()) => {
                 info!("📝 Successfully set text via AXSelectedText: '{}'", text);
-                println!("✅ Corrected text: {}", text);
                 return Ok(());
             }
             Err(e) => {
@@ -210,11 +207,5 @@ mod tests {
         assert!(result.is_ok());
     }
 
-    #[test]
-    fn test_set_text_clipboard_only() {
-        // This test can now use mocks and doesn't depend on system permissions
-        let result = FallbackManager::set_text_clipboard_only("test text");
-        // We just verify it returns some result
-        assert!(result.is_ok() || result.is_err());
-    }
+    
 }

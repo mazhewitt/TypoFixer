@@ -163,7 +163,6 @@ impl<B: ClipboardBackend> ClipboardManager<B> {
         self.send_paste()?;
         
         info!("📋 Successfully set text via clipboard");
-        println!("✅ Corrected text: {}", text);
         Ok(())
     }
 
