@@ -25,9 +25,18 @@ use spell_check::{CorrectionEngine, create_coreml_engine};
 use hotkey::{setup_hotkey, start_hotkey_event_loop};
 use menu_bar::{setup_menu_bar, get_menu_bar};
 
+// Model loading state tracking
+#[derive(Debug, Clone, PartialEq)]
+enum ModelLoadingState {
+    Loading,
+    Loaded,
+    Failed(String),
+}
+
 // Global state
 static CORRECTION_ENGINE: Lazy<Arc<Mutex<Option<CorrectionEngine>>>> = Lazy::new(|| Arc::new(Mutex::new(None)));
 static CONFIG: Lazy<Arc<RwLock<Config>>> = Lazy::new(|| Arc::new(RwLock::new(Config::default())));
+static MODEL_STATE: Lazy<Arc<Mutex<ModelLoadingState>>> = Lazy::new(|| Arc::new(Mutex::new(ModelLoadingState::Loading)));
 
 #[allow(dead_code)]
 fn handle_hotkey_press() {
@@ -112,7 +121,19 @@ fn process_text_correction() -> Result<bool, Box<dyn std::error::Error>> {
         match engine_guard.as_mut() {
             Some(engine) => engine.generate_correction(&text)?,
             None => {
-                return Err("Core ML model is still loading/compiling in background. Please wait a moment and try again.".into());
+                // Check the actual model loading state
+                let state = MODEL_STATE.lock().unwrap();
+                match &*state {
+                    ModelLoadingState::Loading => {
+                        return Err("Core ML model is still loading/compiling in background. Please wait a moment and try again.".into());
+                    }
+                    ModelLoadingState::Failed(error) => {
+                        return Err(format!("Core ML model failed to load: {}. Check the model file and restart the application.", error).into());
+                    }
+                    ModelLoadingState::Loaded => {
+                        return Err("Core ML model loaded but engine not available. Please restart the application.".into());
+                    }
+                }
             }
         }
     };
@@ -200,12 +221,15 @@ fn load_correction_engine() -> Result<(), Box<dyn std::error::Error>> {
         Ok(engine) => {
             info!("✅ Core ML correction engine loaded successfully from: {}", config.model_path.display());
             *CORRECTION_ENGINE.lock().unwrap() = Some(engine);
+            *MODEL_STATE.lock().unwrap() = ModelLoadingState::Loaded;
             Ok(())
         }
         Err(e) => {
+            let error_msg = format!("{}", e);
             warn!("❌ Failed to load Core ML correction engine: {}", e);
             warn!("   Make sure the Core ML model exists at: {}", config.model_path.display());
             warn!("   The model should be a .mlpackage file");
+            *MODEL_STATE.lock().unwrap() = ModelLoadingState::Failed(error_msg.clone());
             Err(format!("Failed to load Core ML correction engine: {}", e).into())
         }
     }

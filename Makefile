@@ -1,65 +1,92 @@
-# Makefile for TypoFixer
+# TypoFixer Build and Cache Management
 
-.PHONY: help build run test clean package install dev-deps
+.PHONY: help build clean clean-coreml test run release check-cache
 
-VERSION := 1.0.0
-APP_NAME := TypoFixer
+# Default target
+help:
+	@echo "TypoFixer Build Commands:"
+	@echo ""
+	@echo "  make build        - Build with Core ML model compilation"
+	@echo "  make clean        - Clean all build artifacts and Core ML cache"
+	@echo "  make clean-coreml - Clean only Core ML model cache"
+	@echo "  make test         - Run tests"
+	@echo "  make run          - Build and run the application"
+	@echo "  make release      - Build optimized release version"
+	@echo "  make check-cache  - Show Core ML cache status"
+	@echo ""
 
-help: ## Show this help message
-	@echo "TypoFixer v$(VERSION) - Development Commands"
-	@echo "==========================================="
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
+# Build with Core ML model compilation
+build:
+	@echo "🔨 Building TypoFixer with Core ML model compilation..."
+	cargo build
 
-build: ## Build the application in release mode
-	@echo "🔨 Building TypoFixer..."
-	cargo build --release
+# Clean all build artifacts including Core ML cache  
+clean:
+	@echo "🧹 Cleaning all build artifacts and Core ML cache..."
+	cargo clean
+	@echo "🗑️  Core ML cache cleaned by cargo clean"
 
-run: ## Run the application in development mode
-	@echo "🚀 Running TypoFixer in development mode..."
-	cargo run
+# Clean only Core ML model cache
+clean-coreml:
+	@echo "🧹 Cleaning Core ML model cache..."
+	@if [ -d "target" ]; then \
+		find target -name "coreml_models" -type d -exec rm -rf {} + 2>/dev/null || true; \
+		find target -name "compile_model.swift" -type f -exec rm -f {} + 2>/dev/null || true; \
+		find target -name "*.mlmodelc" -type d -exec rm -rf {} + 2>/dev/null || true; \
+		echo "✅ Core ML cache cleaned"; \
+	else \
+		echo "✨ No target directory found - cache already clean"; \
+	fi
 
-test: ## Run all tests
+# Run tests
+test:
 	@echo "🧪 Running tests..."
 	cargo test
 
-clean: ## Clean build artifacts
-	@echo "🧹 Cleaning build artifacts..."
-	cargo clean
-	rm -rf dist/
-	rm -rf target/release/$(APP_NAME).app
+# Build and run
+run: build
+	@echo "🚀 Starting TypoFixer..."
+	cargo run
 
-app: build ## Create macOS app bundle
-	@echo "📱 Creating macOS app bundle..."
-	./simple_build.sh
+# Build release version
+release:
+	@echo "🔨 Building optimized release version..."
+	cargo build --release
 
-package: ## Create all distribution packages
-	@echo "📦 Creating distribution packages..."
-	./package.sh
+# Check cache status
+check-cache:
+	@echo "📋 Core ML Cache Status:"
+	@echo ""
+	@if [ -d "target" ]; then \
+		echo "🔍 Searching for cached models..."; \
+		FOUND=0; \
+		for dir in $$(find target -name "coreml_models" -type d 2>/dev/null); do \
+			echo "  📁 $$dir"; \
+			if [ -d "$$dir" ]; then \
+				ls -la "$$dir" 2>/dev/null | sed 's/^/    /' || true; \
+			fi; \
+			FOUND=1; \
+		done; \
+		for file in $$(find target -name "*.mlmodelc" -type d 2>/dev/null); do \
+			echo "  🤖 $$file"; \
+			FOUND=1; \
+		done; \
+		if [ $$FOUND -eq 0 ]; then \
+			echo "  ✨ No cached Core ML models found"; \
+		fi; \
+	else \
+		echo "  📂 No target directory found"; \
+	fi
+	@echo ""
 
-install: app ## Install the app to /Applications
-	@echo "📲 Installing TypoFixer to /Applications..."
-	sudo cp -R target/release/$(APP_NAME).app /Applications/
-	@echo "✅ Installed! Launch from Applications or Spotlight."
-
-dev-deps: ## Install development dependencies
-	@echo "🔧 Installing development dependencies..."
-	@command -v ollama >/dev/null 2>&1 || { echo "Installing Ollama..."; curl -fsSL https://ollama.ai/install.sh | sh; }
-	@echo "📥 Pulling recommended language model..."
-	ollama pull llama3.2:1b
-
-check: ## Check code formatting and linting
-	@echo "🔍 Checking code..."
-	cargo fmt --check
-	cargo clippy -- -D warnings
-
-format: ## Format code
-	@echo "✨ Formatting code..."
-	cargo fmt
-
-demo: app ## Build and run demo
-	@echo "🎬 Running TypoFixer demo..."
-	./target/release/$(APP_NAME).app/Contents/MacOS/$(APP_NAME) &
-	@echo "TypoFixer is now running in the menu bar."
-	@echo "Press Cmd+Option+S in any text field to test text correction."
-
-.DEFAULT_GOAL := help
+# Show build environment info
+env-info:
+	@echo "🔧 Build Environment:"
+	@echo "  Cargo: $$(cargo --version)"
+	@echo "  Rust: $$(rustc --version)"
+	@if command -v swift >/dev/null 2>&1; then \
+		echo "  Swift: $$(swift --version | head -n1)"; \
+	else \
+		echo "  Swift: ❌ Not available (Core ML compilation will fail)"; \
+	fi
+	@echo ""

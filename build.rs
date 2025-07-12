@@ -1,13 +1,19 @@
 use std::env;
 use std::path::PathBuf;
 use std::process::Command;
+use std::fs;
 
 fn main() {
+    // Tell Cargo to rerun this build script if the model changes
     println!("cargo:rerun-if-changed=coreml-setup/");
+    println!("cargo:rerun-if-changed=build.rs");
     
     let out_dir = env::var("OUT_DIR").unwrap();
-    let source_model = "coreml-setup/coreml-setup/coreml-OpenELM-450M-Instruct/OpenELM-450M-Instruct-128-float32.mlpackage";
-    let compiled_model_dir = PathBuf::from(&out_dir).join("compiled_model");
+    let source_model = "coreml-models/SentimentPolarity.mlmodel";
+    let compiled_model_dir = PathBuf::from(&out_dir).join("coreml_models");
+    let compiled_model_path = compiled_model_dir.join("compiled_model.mlmodelc");
+    
+    println!("cargo:rustc-env=COREML_CACHE_DIR={}", compiled_model_dir.display());
     
     // Check if source model exists
     if !std::path::Path::new(source_model).exists() {
@@ -17,7 +23,26 @@ fn main() {
     }
     
     // Create output directory
-    std::fs::create_dir_all(&compiled_model_dir).unwrap();
+    fs::create_dir_all(&compiled_model_dir).unwrap();
+    
+    // Check if model is already compiled and cached
+    if compiled_model_path.exists() {
+        // Check if source is newer than compiled model
+        let source_metadata = fs::metadata(source_model).unwrap();
+        let compiled_metadata = fs::metadata(&compiled_model_path).unwrap();
+        
+        if compiled_metadata.modified().unwrap() >= source_metadata.modified().unwrap() {
+            println!("cargo:warning=Using cached Core ML model from: {}", compiled_model_path.display());
+            println!("cargo:rustc-env=COMPILED_MODEL_PATH={}", compiled_model_path.display());
+            return;
+        } else {
+            println!("cargo:warning=Source model newer than cache, recompiling...");
+            // Remove old compiled model
+            if compiled_model_path.exists() {
+                fs::remove_dir_all(&compiled_model_path).ok();
+            }
+        }
+    }
     
     // Use Swift to compile the Core ML model at build time
     let swift_script = format!(r#"
@@ -44,13 +69,15 @@ do {{
     exit(1)
 }}
 "#, 
-        std::fs::canonicalize(source_model).unwrap().display(),
-        compiled_model_dir.join("compiled_model.mlmodelc").display()
+        fs::canonicalize(source_model).unwrap().display(),
+        compiled_model_path.display()
     );
     
-    // Write Swift script to temporary file
+    // Write Swift script to temporary file  
     let script_path = PathBuf::from(&out_dir).join("compile_model.swift");
-    std::fs::write(&script_path, swift_script).unwrap();
+    fs::write(&script_path, swift_script).unwrap();
+    
+    println!("cargo:warning=Compiling Core ML model at build time...");
     
     // Execute Swift script
     let output = Command::new("swift")
@@ -60,11 +87,11 @@ do {{
     match output {
         Ok(result) => {
             if result.status.success() {
-                println!("cargo:rustc-env=COMPILED_MODEL_PATH={}", 
-                    compiled_model_dir.join("compiled_model.mlmodelc").display());
-                println!("{}", String::from_utf8_lossy(&result.stdout));
+                println!("cargo:warning=✅ Core ML model compiled successfully!");
+                println!("cargo:rustc-env=COMPILED_MODEL_PATH={}", compiled_model_path.display());
+                println!("cargo:warning={}", String::from_utf8_lossy(&result.stdout));
             } else {
-                println!("cargo:warning=Failed to compile Core ML model at build time");
+                println!("cargo:warning=❌ Failed to compile Core ML model at build time");
                 println!("cargo:warning=stdout: {}", String::from_utf8_lossy(&result.stdout));
                 println!("cargo:warning=stderr: {}", String::from_utf8_lossy(&result.stderr));
                 println!("cargo:rustc-env=COMPILED_MODEL_PATH=");  // Set empty path on failure

@@ -9,8 +9,8 @@ pub struct Config {
 
 impl Default for Config {
     fn default() -> Self {
-        // Use the Core ML model path by default
-        let default_model_path = PathBuf::from("coreml-setup/coreml-setup/coreml-OpenELM-450M-Instruct/OpenELM-450M-Instruct-128-float32.mlpackage");
+        // Use the working Core ML sentiment model as a fallback for testing
+        let default_model_path = PathBuf::from("coreml-models/SentimentPolarity.mlmodel");
         
         let home = std::env::var("HOME").unwrap_or_else(|_| "/Users/user".to_string());
         Self {

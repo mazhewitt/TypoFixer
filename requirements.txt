@@ -1,0 +1,6 @@
+# T5 to Core ML Conversion Requirements
+torch>=2.0.0
+transformers>=4.20.0
+coremltools>=7.0
+numpy>=1.21.0
+tokenizers>=0.13.0

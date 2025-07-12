@@ -1,0 +1,494 @@
+🔨 Building TypoFixer with Core ML model compilation...
+cargo build
+warning: typo-fixer@1.0.0: Compiling Core ML model at build time...
+warning: typo-fixer@1.0.0: ❌ Failed to compile Core ML model at build time
+warning: typo-fixer@1.0.0: stdout: ❌ Failed to compile Core ML model: Error Domain=com.apple.mlassetio Code=1 "Failed to parse the model specification. Error: Field number 14 has wireType 6, which is not supported." UserInfo={NSLocalizedDescription=Failed to parse the model specification. Error: Field number 14 has wireType 6, which is not supported.}
+warning: typo-fixer@1.0.0: stderr:
+warning: unexpected `cfg` condition value: `cargo-clippy`
+  --> src/accessibility/clipboard.rs:73:29
+   |
+73 |         let ns_string: id = msg_send![pasteboard, stringForType: string_type];
+   |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: no expected values for `feature`
+   = note: using a cfg inside a macro will use the cfgs from the destination crate and not the ones from the defining crate
+   = help: try referring to `sel_impl` crate for guidance on how handle this unexpected cfg
+   = help: the macro `sel_impl` may come from an old version of the `objc` crate, try updating your dependency with `cargo update -p objc`
+   = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+   = note: `#[warn(unexpected_cfgs)]` on by default
+   = note: this warning originates in the macro `sel_impl` which comes from the expansion of the macro `msg_send` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unexpected `cfg` condition value: `cargo-clippy`
+  --> src/accessibility/clipboard.rs:76:39
+   |
+76 |             let utf8_str: *const i8 = msg_send![ns_string, UTF8String];
+   |                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: no expected values for `feature`
+   = note: using a cfg inside a macro will use the cfgs from the destination crate and not the ones from the defining crate
+   = help: try referring to `sel_impl` crate for guidance on how handle this unexpected cfg
+   = help: the macro `sel_impl` may come from an old version of the `objc` crate, try updating your dependency with `cargo update -p objc`
+   = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+   = note: this warning originates in the macro `sel_impl` which comes from the expansion of the macro `msg_send` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unexpected `cfg` condition value: `cargo-clippy`
+  --> src/accessibility/clipboard.rs:91:29
+   |
+91 |         let ns_string: id = msg_send![ns_string, initWithUTF8String: text.as_ptr()];
+   |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: no expected values for `feature`
+   = note: using a cfg inside a macro will use the cfgs from the destination crate and not the ones from the defining crate
+   = help: try referring to `sel_impl` crate for guidance on how handle this unexpected cfg
+   = help: the macro `sel_impl` may come from an old version of the `objc` crate, try updating your dependency with `cargo update -p objc`
+   = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+   = note: this warning originates in the macro `sel_impl` which comes from the expansion of the macro `msg_send` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unexpected `cfg` condition value: `cargo-clippy`
+  --> src/accessibility/clipboard.rs:94:21
+   |
+94 |         let _: () = msg_send![pasteboard, clearContents];
+   |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: no expected values for `feature`
+   = note: using a cfg inside a macro will use the cfgs from the destination crate and not the ones from the defining crate
+   = help: try referring to `sel_impl` crate for guidance on how handle this unexpected cfg
+   = help: the macro `sel_impl` may come from an old version of the `objc` crate, try updating your dependency with `cargo update -p objc`
+   = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+   = note: this warning originates in the macro `sel_impl` which comes from the expansion of the macro `msg_send` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unexpected `cfg` condition value: `cargo-clippy`
+  --> src/accessibility/clipboard.rs:95:23
+   |
+95 |         let _: bool = msg_send![pasteboard, setString: ns_string forType: string_type];
+   |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: no expected values for `feature`
+   = note: using a cfg inside a macro will use the cfgs from the destination crate and not the ones from the defining crate
+   = help: try referring to `sel_impl` crate for guidance on how handle this unexpected cfg
+   = help: the macro `sel_impl` may come from an old version of the `objc` crate, try updating your dependency with `cargo update -p objc`
+   = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+   = note: this warning originates in the macro `sel_impl` which comes from the expansion of the macro `msg_send` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unexpected `cfg` condition value: `cargo-clippy`
+   --> src/accessibility/mod.rs:142:35
+    |
+142 |         let utf8_str: *const i8 = msg_send![ns_str, UTF8String];
+    |                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: no expected values for `feature`
+    = note: using a cfg inside a macro will use the cfgs from the destination crate and not the ones from the defining crate
+    = help: try referring to `sel_impl` crate for guidance on how handle this unexpected cfg
+    = help: the macro `sel_impl` may come from an old version of the `objc` crate, try updating your dependency with `cargo update -p objc`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+    = note: this warning originates in the macro `sel_impl` which comes from the expansion of the macro `msg_send` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: use of deprecated type alias `cocoa::base::id`: use the objc2 crate instead
+   --> src/accessibility/mod.rs:139:48
+    |
+139 | pub fn nsstring_to_string(ns_str: cocoa::base::id) -> String {
+    |                                                ^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated type alias `cocoa::base::id`: use the objc2 crate instead
+ --> src/accessibility/clipboard.rs:1:18
+  |
+1 | use cocoa::base::id;
+  |                  ^^
+
+warning: use of deprecated trait `cocoa::appkit::NSPasteboard`: use the objc2-app-kit crate instead
+ --> src/accessibility/clipboard.rs:2:20
+  |
+2 | use cocoa::appkit::NSPasteboard;
+  |                    ^^^^^^^^^^^^
+
+warning: use of deprecated static `cocoa::appkit::NSPasteboardTypeString`: use the objc2-app-kit crate instead
+  --> src/accessibility/clipboard.rs:70:28
+   |
+70 |         use cocoa::appkit::NSPasteboardTypeString;
+   |                            ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: use of deprecated trait `cocoa::foundation::NSString`: use the objc2-foundation crate instead
+  --> src/accessibility/clipboard.rs:87:32
+   |
+87 |         use cocoa::foundation::NSString;
+   |                                ^^^^^^^^
+
+warning: use of deprecated static `cocoa::appkit::NSPasteboardTypeString`: use the objc2-app-kit crate instead
+  --> src/accessibility/clipboard.rs:88:28
+   |
+88 |         use cocoa::appkit::NSPasteboardTypeString;
+   |                            ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: use of deprecated associated function `cocoa::foundation::NSAutoreleasePool::new`: use the objc2-foundation crate instead
+  --> src/accessibility/clipboard.rs:33:63
+   |
+33 |             let _pool = cocoa::foundation::NSAutoreleasePool::new(cocoa::base::nil);
+   |                                                               ^^^
+
+warning: use of deprecated constant `cocoa::base::nil`: use the objc2 crate instead
+  --> src/accessibility/clipboard.rs:33:80
+   |
+33 |             let _pool = cocoa::foundation::NSAutoreleasePool::new(cocoa::base::nil);
+   |                                                                                ^^^
+
+warning: use of deprecated associated function `cocoa::appkit::NSPasteboard::generalPasteboard`: use the objc2-app-kit crate instead
+  --> src/accessibility/clipboard.rs:34:44
+   |
+34 |             let pasteboard = NSPasteboard::generalPasteboard(cocoa::base::nil);
+   |                                            ^^^^^^^^^^^^^^^^^
+
+warning: use of deprecated constant `cocoa::base::nil`: use the objc2 crate instead
+  --> src/accessibility/clipboard.rs:34:75
+   |
+34 |             let pasteboard = NSPasteboard::generalPasteboard(cocoa::base::nil);
+   |                                                                           ^^^
+
+warning: use of deprecated associated function `cocoa::foundation::NSAutoreleasePool::new`: use the objc2-foundation crate instead
+  --> src/accessibility/clipboard.rs:42:63
+   |
+42 |             let _pool = cocoa::foundation::NSAutoreleasePool::new(cocoa::base::nil);
+   |                                                               ^^^
+
+warning: use of deprecated constant `cocoa::base::nil`: use the objc2 crate instead
+  --> src/accessibility/clipboard.rs:42:80
+   |
+42 |             let _pool = cocoa::foundation::NSAutoreleasePool::new(cocoa::base::nil);
+   |                                                                                ^^^
+
+warning: use of deprecated associated function `cocoa::appkit::NSPasteboard::generalPasteboard`: use the objc2-app-kit crate instead
+  --> src/accessibility/clipboard.rs:43:44
+   |
+43 |             let pasteboard = NSPasteboard::generalPasteboard(cocoa::base::nil);
+   |                                            ^^^^^^^^^^^^^^^^^
+
+warning: use of deprecated constant `cocoa::base::nil`: use the objc2 crate instead
+  --> src/accessibility/clipboard.rs:43:75
+   |
+43 |             let pasteboard = NSPasteboard::generalPasteboard(cocoa::base::nil);
+   |                                                                           ^^^
+
+warning: use of deprecated type alias `cocoa::base::id`: use the objc2 crate instead
+  --> src/accessibility/clipboard.rs:69:46
+   |
+69 |     unsafe fn get_clipboard_text(pasteboard: id) -> Option<String> {
+   |                                              ^^
+
+warning: use of deprecated static `cocoa::appkit::NSPasteboardTypeString`: use the objc2-app-kit crate instead
+  --> src/accessibility/clipboard.rs:72:27
+   |
+72 |         let string_type = NSPasteboardTypeString;
+   |                           ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: use of deprecated type alias `cocoa::base::id`: use the objc2 crate instead
+  --> src/accessibility/clipboard.rs:73:24
+   |
+73 |         let ns_string: id = msg_send![pasteboard, stringForType: string_type];
+   |                        ^^
+
+warning: use of deprecated constant `cocoa::base::nil`: use the objc2 crate instead
+  --> src/accessibility/clipboard.rs:75:38
+   |
+75 |         if ns_string != cocoa::base::nil {
+   |                                      ^^^
+
+warning: use of deprecated type alias `cocoa::base::id`: use the objc2 crate instead
+  --> src/accessibility/clipboard.rs:86:46
+   |
+86 |     unsafe fn set_clipboard_text(pasteboard: id, text: &str) {
+   |                                              ^^
+
+warning: use of deprecated associated function `cocoa::foundation::NSString::alloc`: use the objc2-foundation crate instead
+  --> src/accessibility/clipboard.rs:90:35
+   |
+90 |         let ns_string = NSString::alloc(cocoa::base::nil);
+   |                                   ^^^^^
+
+warning: use of deprecated constant `cocoa::base::nil`: use the objc2 crate instead
+  --> src/accessibility/clipboard.rs:90:54
+   |
+90 |         let ns_string = NSString::alloc(cocoa::base::nil);
+   |                                                      ^^^
+
+warning: use of deprecated type alias `cocoa::base::id`: use the objc2 crate instead
+  --> src/accessibility/clipboard.rs:91:24
+   |
+91 |         let ns_string: id = msg_send![ns_string, initWithUTF8String: text.as_ptr()];
+   |                        ^^
+
+warning: use of deprecated static `cocoa::appkit::NSPasteboardTypeString`: use the objc2-app-kit crate instead
+  --> src/accessibility/clipboard.rs:93:27
+   |
+93 |         let string_type = NSPasteboardTypeString;
+   |                           ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: use of deprecated associated function `objc2_core_ml::generated::__MLModel_MLModelCompilation::<impl objc2_core_ml::MLModel>::compileModelAtURL_error`: Use the asynchronous interface compileModelAtURL:completionHandler:error: instead.
+  --> src/spell_check/coreml_corrector.rs:86:41
+   |
+86 |                 match unsafe { MLModel::compileModelAtURL_error(&model_url) } {
+   |                                         ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `typo-fixer` (bin "typo-fixer") generated 30 warnings
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.09s
+🚀 Starting TypoFixer...
+cargo run
+warning: typo-fixer@1.0.0: Compiling Core ML model at build time...
+warning: typo-fixer@1.0.0: ❌ Failed to compile Core ML model at build time
+warning: typo-fixer@1.0.0: stdout: ❌ Failed to compile Core ML model: Error Domain=com.apple.mlassetio Code=1 "Failed to parse the model specification. Error: Field number 14 has wireType 6, which is not supported." UserInfo={NSLocalizedDescription=Failed to parse the model specification. Error: Field number 14 has wireType 6, which is not supported.}
+warning: typo-fixer@1.0.0: stderr:
+warning: unexpected `cfg` condition value: `cargo-clippy`
+  --> src/accessibility/clipboard.rs:73:29
+   |
+73 |         let ns_string: id = msg_send![pasteboard, stringForType: string_type];
+   |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: no expected values for `feature`
+   = note: using a cfg inside a macro will use the cfgs from the destination crate and not the ones from the defining crate
+   = help: try referring to `sel_impl` crate for guidance on how handle this unexpected cfg
+   = help: the macro `sel_impl` may come from an old version of the `objc` crate, try updating your dependency with `cargo update -p objc`
+   = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+   = note: `#[warn(unexpected_cfgs)]` on by default
+   = note: this warning originates in the macro `sel_impl` which comes from the expansion of the macro `msg_send` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unexpected `cfg` condition value: `cargo-clippy`
+  --> src/accessibility/clipboard.rs:76:39
+   |
+76 |             let utf8_str: *const i8 = msg_send![ns_string, UTF8String];
+   |                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: no expected values for `feature`
+   = note: using a cfg inside a macro will use the cfgs from the destination crate and not the ones from the defining crate
+   = help: try referring to `sel_impl` crate for guidance on how handle this unexpected cfg
+   = help: the macro `sel_impl` may come from an old version of the `objc` crate, try updating your dependency with `cargo update -p objc`
+   = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+   = note: this warning originates in the macro `sel_impl` which comes from the expansion of the macro `msg_send` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unexpected `cfg` condition value: `cargo-clippy`
+  --> src/accessibility/clipboard.rs:91:29
+   |
+91 |         let ns_string: id = msg_send![ns_string, initWithUTF8String: text.as_ptr()];
+   |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: no expected values for `feature`
+   = note: using a cfg inside a macro will use the cfgs from the destination crate and not the ones from the defining crate
+   = help: try referring to `sel_impl` crate for guidance on how handle this unexpected cfg
+   = help: the macro `sel_impl` may come from an old version of the `objc` crate, try updating your dependency with `cargo update -p objc`
+   = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+   = note: this warning originates in the macro `sel_impl` which comes from the expansion of the macro `msg_send` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unexpected `cfg` condition value: `cargo-clippy`
+  --> src/accessibility/clipboard.rs:94:21
+   |
+94 |         let _: () = msg_send![pasteboard, clearContents];
+   |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: no expected values for `feature`
+   = note: using a cfg inside a macro will use the cfgs from the destination crate and not the ones from the defining crate
+   = help: try referring to `sel_impl` crate for guidance on how handle this unexpected cfg
+   = help: the macro `sel_impl` may come from an old version of the `objc` crate, try updating your dependency with `cargo update -p objc`
+   = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+   = note: this warning originates in the macro `sel_impl` which comes from the expansion of the macro `msg_send` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unexpected `cfg` condition value: `cargo-clippy`
+  --> src/accessibility/clipboard.rs:95:23
+   |
+95 |         let _: bool = msg_send![pasteboard, setString: ns_string forType: string_type];
+   |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: no expected values for `feature`
+   = note: using a cfg inside a macro will use the cfgs from the destination crate and not the ones from the defining crate
+   = help: try referring to `sel_impl` crate for guidance on how handle this unexpected cfg
+   = help: the macro `sel_impl` may come from an old version of the `objc` crate, try updating your dependency with `cargo update -p objc`
+   = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+   = note: this warning originates in the macro `sel_impl` which comes from the expansion of the macro `msg_send` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unexpected `cfg` condition value: `cargo-clippy`
+   --> src/accessibility/mod.rs:142:35
+    |
+142 |         let utf8_str: *const i8 = msg_send![ns_str, UTF8String];
+    |                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: no expected values for `feature`
+    = note: using a cfg inside a macro will use the cfgs from the destination crate and not the ones from the defining crate
+    = help: try referring to `sel_impl` crate for guidance on how handle this unexpected cfg
+    = help: the macro `sel_impl` may come from an old version of the `objc` crate, try updating your dependency with `cargo update -p objc`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+    = note: this warning originates in the macro `sel_impl` which comes from the expansion of the macro `msg_send` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: use of deprecated type alias `cocoa::base::id`: use the objc2 crate instead
+   --> src/accessibility/mod.rs:139:48
+    |
+139 | pub fn nsstring_to_string(ns_str: cocoa::base::id) -> String {
+    |                                                ^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated type alias `cocoa::base::id`: use the objc2 crate instead
+ --> src/accessibility/clipboard.rs:1:18
+  |
+1 | use cocoa::base::id;
+  |                  ^^
+
+warning: use of deprecated trait `cocoa::appkit::NSPasteboard`: use the objc2-app-kit crate instead
+ --> src/accessibility/clipboard.rs:2:20
+  |
+2 | use cocoa::appkit::NSPasteboard;
+  |                    ^^^^^^^^^^^^
+
+warning: use of deprecated static `cocoa::appkit::NSPasteboardTypeString`: use the objc2-app-kit crate instead
+  --> src/accessibility/clipboard.rs:70:28
+   |
+70 |         use cocoa::appkit::NSPasteboardTypeString;
+   |                            ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: use of deprecated trait `cocoa::foundation::NSString`: use the objc2-foundation crate instead
+  --> src/accessibility/clipboard.rs:87:32
+   |
+87 |         use cocoa::foundation::NSString;
+   |                                ^^^^^^^^
+
+warning: use of deprecated static `cocoa::appkit::NSPasteboardTypeString`: use the objc2-app-kit crate instead
+  --> src/accessibility/clipboard.rs:88:28
+   |
+88 |         use cocoa::appkit::NSPasteboardTypeString;
+   |                            ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: use of deprecated associated function `cocoa::foundation::NSAutoreleasePool::new`: use the objc2-foundation crate instead
+  --> src/accessibility/clipboard.rs:33:63
+   |
+33 |             let _pool = cocoa::foundation::NSAutoreleasePool::new(cocoa::base::nil);
+   |                                                               ^^^
+
+warning: use of deprecated constant `cocoa::base::nil`: use the objc2 crate instead
+  --> src/accessibility/clipboard.rs:33:80
+   |
+33 |             let _pool = cocoa::foundation::NSAutoreleasePool::new(cocoa::base::nil);
+   |                                                                                ^^^
+
+warning: use of deprecated associated function `cocoa::appkit::NSPasteboard::generalPasteboard`: use the objc2-app-kit crate instead
+  --> src/accessibility/clipboard.rs:34:44
+   |
+34 |             let pasteboard = NSPasteboard::generalPasteboard(cocoa::base::nil);
+   |                                            ^^^^^^^^^^^^^^^^^
+
+warning: use of deprecated constant `cocoa::base::nil`: use the objc2 crate instead
+  --> src/accessibility/clipboard.rs:34:75
+   |
+34 |             let pasteboard = NSPasteboard::generalPasteboard(cocoa::base::nil);
+   |                                                                           ^^^
+
+warning: use of deprecated associated function `cocoa::foundation::NSAutoreleasePool::new`: use the objc2-foundation crate instead
+  --> src/accessibility/clipboard.rs:42:63
+   |
+42 |             let _pool = cocoa::foundation::NSAutoreleasePool::new(cocoa::base::nil);
+   |                                                               ^^^
+
+warning: use of deprecated constant `cocoa::base::nil`: use the objc2 crate instead
+  --> src/accessibility/clipboard.rs:42:80
+   |
+42 |             let _pool = cocoa::foundation::NSAutoreleasePool::new(cocoa::base::nil);
+   |                                                                                ^^^
+
+warning: use of deprecated associated function `cocoa::appkit::NSPasteboard::generalPasteboard`: use the objc2-app-kit crate instead
+  --> src/accessibility/clipboard.rs:43:44
+   |
+43 |             let pasteboard = NSPasteboard::generalPasteboard(cocoa::base::nil);
+   |                                            ^^^^^^^^^^^^^^^^^
+
+warning: use of deprecated constant `cocoa::base::nil`: use the objc2 crate instead
+  --> src/accessibility/clipboard.rs:43:75
+   |
+43 |             let pasteboard = NSPasteboard::generalPasteboard(cocoa::base::nil);
+   |                                                                           ^^^
+
+warning: use of deprecated type alias `cocoa::base::id`: use the objc2 crate instead
+  --> src/accessibility/clipboard.rs:69:46
+   |
+69 |     unsafe fn get_clipboard_text(pasteboard: id) -> Option<String> {
+   |                                              ^^
+
+warning: use of deprecated static `cocoa::appkit::NSPasteboardTypeString`: use the objc2-app-kit crate instead
+  --> src/accessibility/clipboard.rs:72:27
+   |
+72 |         let string_type = NSPasteboardTypeString;
+   |                           ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: use of deprecated type alias `cocoa::base::id`: use the objc2 crate instead
+  --> src/accessibility/clipboard.rs:73:24
+   |
+73 |         let ns_string: id = msg_send![pasteboard, stringForType: string_type];
+   |                        ^^
+
+warning: use of deprecated constant `cocoa::base::nil`: use the objc2 crate instead
+  --> src/accessibility/clipboard.rs:75:38
+   |
+75 |         if ns_string != cocoa::base::nil {
+   |                                      ^^^
+
+warning: use of deprecated type alias `cocoa::base::id`: use the objc2 crate instead
+  --> src/accessibility/clipboard.rs:86:46
+   |
+86 |     unsafe fn set_clipboard_text(pasteboard: id, text: &str) {
+   |                                              ^^
+
+warning: use of deprecated associated function `cocoa::foundation::NSString::alloc`: use the objc2-foundation crate instead
+  --> src/accessibility/clipboard.rs:90:35
+   |
+90 |         let ns_string = NSString::alloc(cocoa::base::nil);
+   |                                   ^^^^^
+
+warning: use of deprecated constant `cocoa::base::nil`: use the objc2 crate instead
+  --> src/accessibility/clipboard.rs:90:54
+   |
+90 |         let ns_string = NSString::alloc(cocoa::base::nil);
+   |                                                      ^^^
+
+warning: use of deprecated type alias `cocoa::base::id`: use the objc2 crate instead
+  --> src/accessibility/clipboard.rs:91:24
+   |
+91 |         let ns_string: id = msg_send![ns_string, initWithUTF8String: text.as_ptr()];
+   |                        ^^
+
+warning: use of deprecated static `cocoa::appkit::NSPasteboardTypeString`: use the objc2-app-kit crate instead
+  --> src/accessibility/clipboard.rs:93:27
+   |
+93 |         let string_type = NSPasteboardTypeString;
+   |                           ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: use of deprecated associated function `objc2_core_ml::generated::__MLModel_MLModelCompilation::<impl objc2_core_ml::MLModel>::compileModelAtURL_error`: Use the asynchronous interface compileModelAtURL:completionHandler:error: instead.
+  --> src/spell_check/coreml_corrector.rs:86:41
+   |
+86 |                 match unsafe { MLModel::compileModelAtURL_error(&model_url) } {
+   |                                         ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `typo-fixer` (bin "typo-fixer") generated 30 warnings
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.07s
+     Running `target/debug/typo-fixer`
+[2m2025-07-11T18:45:45.411995Z[0m [32m INFO[0m [2mtypo_fixer[0m[2m:[0m Loading Core ML correction engine...
+[2m2025-07-11T18:45:45.412110Z[0m [32m INFO[0m [2mtypo_fixer::menu_bar[0m[2m:[0m Setting up menu-bar...
+[2m2025-07-11T18:45:45.412276Z[0m [32m INFO[0m [2mtypo_fixer::spell_check[0m[2m:[0m Creating Core ML correction engine from: coreml-setup/coreml-setup/coreml-OpenELM-450M-Instruct/OpenELM-450M-Instruct-128-float32.mlpackage
+[2m2025-07-11T18:45:45.412296Z[0m [32m INFO[0m [2mtypo_fixer::spell_check::coreml_corrector[0m[2m:[0m 🧠 Initializing Core ML-based grammar corrector...
+[2m2025-07-11T18:45:45.412561Z[0m [32m INFO[0m [2mtypo_fixer::spell_check::coreml_corrector[0m[2m:[0m 📦 No pre-compiled model found, attempting runtime loading/compilation
+[2m2025-07-11T18:45:45.412604Z[0m [32m INFO[0m [2mtypo_fixer::spell_check::coreml_corrector[0m[2m:[0m 📦 Loading Core ML model from: coreml-setup/coreml-setup/coreml-OpenELM-450M-Instruct/OpenELM-450M-Instruct-128-float32.mlpackage
+[2m2025-07-11T18:45:45.414359Z[0m [32m INFO[0m [2mtypo_fixer::spell_check::coreml_corrector[0m[2m:[0m 🔨 Model loading failed, attempting to compile model...
+[2m2025-07-11T18:45:45.416932Z[0m [33m WARN[0m [2mtypo_fixer[0m[2m:[0m ❌ Failed to load Core ML correction engine: Failed to compile and load Core ML model. Original error: NSError { code: 0, localizedDescription: "Unable to load model: file:///Users/mazdahewitt/projects/splchk/coreml-setup/coreml-setup/coreml-OpenELM-450M-Instruct/OpenELM-450M-Instruct-128-float32.mlpackage/. Compile the model with Xcode or `MLModel.compileModel(at:)`. ", domain: "com.apple.CoreML", userInfo: {"NSLocalizedDescription": <__NSCFString: 0x153f18d60>, "NSUnderlyingError": <NSError: 0x153f17df0>}, .. }, Compile error: NSError { code: 1, localizedDescription: "Failed to parse the model specification. Error: Field number 14 has wireType 6, which is not supported.", domain: "com.apple.mlassetio", userInfo: {"NSLocalizedDescription": <__NSCFString: 0x155109880>}, .. }
+[2m2025-07-11T18:45:45.416958Z[0m [33m WARN[0m [2mtypo_fixer[0m[2m:[0m    Make sure the Core ML model exists at: coreml-setup/coreml-setup/coreml-OpenELM-450M-Instruct/OpenELM-450M-Instruct-128-float32.mlpackage
+[2m2025-07-11T18:45:45.416967Z[0m [33m WARN[0m [2mtypo_fixer[0m[2m:[0m    The model should be a .mlpackage file
+[2m2025-07-11T18:45:45.417085Z[0m [31mERROR[0m [2mtypo_fixer[0m[2m:[0m ❌ Failed to load correction engine: Failed to load Core ML correction engine: Failed to compile and load Core ML model. Original error: NSError { code: 0, localizedDescription: "Unable to load model: file:///Users/mazdahewitt/projects/splchk/coreml-setup/coreml-setup/coreml-OpenELM-450M-Instruct/OpenELM-450M-Instruct-128-float32.mlpackage/. Compile the model with Xcode or `MLModel.compileModel(at:)`. ", domain: "com.apple.CoreML", userInfo: {"NSLocalizedDescription": <__NSCFString: 0x153f18d60>, "NSUnderlyingError": <NSError: 0x153f17df0>}, .. }, Compile error: NSError { code: 1, localizedDescription: "Failed to parse the model specification. Error: Field number 14 has wireType 6, which is not supported.", domain: "com.apple.mlassetio", userInfo: {"NSLocalizedDescription": <__NSCFString: 0x155109880>}, .. }
+[2m2025-07-11T18:45:45.417098Z[0m [31mERROR[0m [2mtypo_fixer[0m[2m:[0m    TypoFixer will not work until the model is loaded.
+[2m2025-07-11T18:45:45.475010Z[0m [32m INFO[0m [2mtypo_fixer::menu_bar[0m[2m:[0m ✅ Menu-bar setup complete
+[2m2025-07-11T18:45:45.475040Z[0m [32m INFO[0m [2mtypo_fixer::hotkey[0m[2m:[0m Setting up hotkey ⌘⌥S using global-hotkey
+[2m2025-07-11T18:45:45.475157Z[0m [32m INFO[0m [2mtypo_fixer::hotkey[0m[2m:[0m Created hotkey: HotKey { mods: Modifiers(ALT | SUPER), key: KeyS, id: 536936485 } (⌘⌥S)
+[2m2025-07-11T18:45:45.475298Z[0m [32m INFO[0m [2mtypo_fixer::hotkey[0m[2m:[0m ✅ Hotkey ⌘⌥S registered successfully!
+[2m2025-07-11T18:45:45.475311Z[0m [32m INFO[0m [2mtypo_fixer::hotkey[0m[2m:[0m Hotkey manager stored in global state
+[2m2025-07-11T18:45:45.475337Z[0m [32m INFO[0m [2mtypo_fixer[0m[2m:[0m TypoFixer started - Core ML model loading in background...
+[2m2025-07-11T18:45:45.475344Z[0m [32m INFO[0m [2mtypo_fixer[0m[2m:[0m 🚀 TypoFixer hotkey registered! Core ML model is loading - you'll see a message when ready.
+[2m2025-07-11T18:45:45.475354Z[0m [32m INFO[0m [2mtypo_fixer::hotkey[0m[2m:[0m Starting hotkey event loop thread...
+[2m2025-07-11T18:45:45.475405Z[0m [32m INFO[0m [2mtypo_fixer::hotkey[0m[2m:[0m Hotkey event loop thread started, listening for events...
+[2m2025-07-11T18:45:45.483206Z[0m [32m INFO[0m [2mtypo_fixer::menu_bar[0m[2m:[0m Setting up status bar...
+[2m2025-07-11T18:45:45.483241Z[0m [32m INFO[0m [2mtypo_fixer::menu_bar[0m[2m:[0m Got system status bar
+[2m2025-07-11T18:45:45.499632Z[0m [32m INFO[0m [2mtypo_fixer::menu_bar[0m[2m:[0m Created status item
+[2m2025-07-11T18:45:45.501131Z[0m [32m INFO[0m [2mtypo_fixer::menu_bar[0m[2m:[0m Created template image
+[2m2025-07-11T18:45:45.504645Z[0m [32m INFO[0m [2mtypo_fixer::menu_bar[0m[2m:[0m Set button image
+make: *** [run] Terminated: 15

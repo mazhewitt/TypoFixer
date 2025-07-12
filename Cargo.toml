@@ -42,3 +42,7 @@ lto = true
 [[bin]]
 name = "typo-fixer"
 path = "src/main.rs"
+
+# Build script for Core ML model compilation
+[build-dependencies]
+# No external dependencies needed for build script
