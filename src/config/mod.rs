@@ -68,7 +68,7 @@ mod tests {
     #[test]
     fn test_config_default() {
         let config = Config::default();
-        assert!(config.model_path.to_string_lossy().contains("OpenELM-450M-Instruct-128-float32.mlpackage"));
+        assert!(config.model_path.to_string_lossy().contains("SentimentPolarity.mlmodel"));
         assert!(config.config_path.to_string_lossy().contains("config.toml"));
     }
 
@@ -92,7 +92,7 @@ mod tests {
         
         // Test load - first check default config
         let default_config = Config::default();
-        assert!(default_config.model_path.to_string_lossy().contains("OpenELM-450M-Instruct-128-float32.mlpackage"));
+        assert!(default_config.model_path.to_string_lossy().contains("SentimentPolarity.mlmodel"));
         
         // Note: Config::load() reads from user's config file which may contain old settings
         // So we don't test that here as it's environment-dependent
