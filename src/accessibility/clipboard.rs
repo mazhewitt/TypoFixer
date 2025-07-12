@@ -1,7 +1,5 @@
-use cocoa::base::id;
-use cocoa::appkit::NSPasteboard;
-use objc::{msg_send, sel, sel_impl};
-use std::ffi;
+use objc2_app_kit::{NSPasteboard, NSPasteboardTypeString};
+use objc2_foundation::{NSString, NSAutoreleasePool};
 use std::process::Command;
 use std::thread;
 use std::time::Duration;
@@ -30,18 +28,18 @@ impl ClipboardBackend for SystemClipboard {
     /// Get current clipboard text content
     fn get_text(&self) -> Result<Option<String>, Box<dyn std::error::Error>> {
         unsafe {
-            let _pool = cocoa::foundation::NSAutoreleasePool::new(cocoa::base::nil);
-            let pasteboard = NSPasteboard::generalPasteboard(cocoa::base::nil);
-            Ok(Self::get_clipboard_text(pasteboard))
+            let _pool = NSAutoreleasePool::new();
+            let pasteboard = NSPasteboard::generalPasteboard();
+            Ok(Self::get_clipboard_text(&pasteboard))
         }
     }
 
     /// Set clipboard text content
     fn set_text(&self, text: &str) -> Result<(), Box<dyn std::error::Error>> {
         unsafe {
-            let _pool = cocoa::foundation::NSAutoreleasePool::new(cocoa::base::nil);
-            let pasteboard = NSPasteboard::generalPasteboard(cocoa::base::nil);
-            Self::set_clipboard_text(pasteboard, text);
+            let _pool = NSAutoreleasePool::new();
+            let pasteboard = NSPasteboard::generalPasteboard();
+            Self::set_clipboard_text(&pasteboard, text);
             Ok(())
         }
     }
@@ -66,33 +64,19 @@ impl ClipboardBackend for SystemClipboard {
 
 impl SystemClipboard {
     /// Get text from pasteboard (unsafe helper)
-    unsafe fn get_clipboard_text(pasteboard: id) -> Option<String> {
-        use cocoa::appkit::NSPasteboardTypeString;
-        
-        let string_type = NSPasteboardTypeString;
-        let ns_string: id = msg_send![pasteboard, stringForType: string_type];
-        
-        if ns_string != cocoa::base::nil {
-            let utf8_str: *const i8 = msg_send![ns_string, UTF8String];
-            if !utf8_str.is_null() {
-                let c_str = ffi::CStr::from_ptr(utf8_str);
-                return Some(c_str.to_string_lossy().to_string());
-            }
+    unsafe fn get_clipboard_text(pasteboard: &NSPasteboard) -> Option<String> {
+        if let Some(ns_string) = pasteboard.stringForType(&NSPasteboardTypeString) {
+            Some(ns_string.to_string())
+        } else {
+            None
         }
-        None
     }
 
     /// Set text on pasteboard (unsafe helper)
-    unsafe fn set_clipboard_text(pasteboard: id, text: &str) {
-        use cocoa::foundation::NSString;
-        use cocoa::appkit::NSPasteboardTypeString;
-        
-        let ns_string = NSString::alloc(cocoa::base::nil);
-        let ns_string: id = msg_send![ns_string, initWithUTF8String: text.as_ptr()];
-        
-        let string_type = NSPasteboardTypeString;
-        let _: () = msg_send![pasteboard, clearContents];
-        let _: bool = msg_send![pasteboard, setString: ns_string forType: string_type];
+    unsafe fn set_clipboard_text(pasteboard: &NSPasteboard, text: &str) {
+        let ns_string = NSString::from_str(text);
+        pasteboard.clearContents();
+        pasteboard.setString_forType(&ns_string, &NSPasteboardTypeString);
     }
 }
 

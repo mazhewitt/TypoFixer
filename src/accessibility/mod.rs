@@ -134,19 +134,7 @@ pub fn get_selection_range(_range_ref: *const std::ffi::c_void) -> Result<Range<
     Ok(0..0)
 }
 
-#[deprecated(note = "Use AxApi methods instead")]
-#[allow(dead_code)]
-pub fn nsstring_to_string(ns_str: cocoa::base::id) -> String {
-    unsafe {
-        use objc::{msg_send, sel, sel_impl};
-        let utf8_str: *const i8 = msg_send![ns_str, UTF8String];
-        if utf8_str.is_null() {
-            String::new()
-        } else {
-            std::ffi::CStr::from_ptr(utf8_str).to_string_lossy().to_string()
-        }
-    }
-}
+// Removed deprecated nsstring_to_string function - use AxApi methods instead
 
 #[cfg(test)]
 mod tests {

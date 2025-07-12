@@ -46,24 +46,18 @@ fn main() {
                 println!("   ✅ OpenELM model loaded successfully!");
             }
             Err(load_error) => {
-                println!("   ❌ Direct load failed, trying compilation...");
+                println!("   ❌ Direct load failed: {:?}", load_error);
+                let error_desc = load_error.localizedDescription();
+                let error_str = error_desc.to_string();
+                println!("   Error: {}", error_str);
                 
-                match unsafe { MLModel::compileModelAtURL_error(&model_url) } {
-                    Ok(_compiled_url) => {
-                        println!("   ✅ OpenELM model compiled successfully!");
-                    }
-                    Err(compile_error) => {
-                        println!("   ❌ Compilation failed: {:?}", compile_error);
-                        let error_desc = compile_error.localizedDescription();
-                        let error_str = error_desc.to_string();
-                        println!("   Error: {}", error_str);
-                        
-                        if error_str.contains("wireType 6") {
-                            println!("   🎯 CONFIRMED: wireType 6 parsing issue");
-                            println!("   📝 This model was created with newer Core ML tools");
-                            println!("   💡 Solution: Use a compatible model or update Core ML");
-                        }
-                    }
+                if error_str.contains("wireType 6") {
+                    println!("   🎯 CONFIRMED: wireType 6 parsing issue");
+                    println!("   📝 This model was created with newer Core ML tools");
+                    println!("   💡 Solution: Use a compatible model or update Core ML");
+                } else {
+                    println!("   💡 Note: Model compilation is handled at build time in production");
+                    println!("   💡 This test binary only verifies direct loading capability");
                 }
             }
         }
