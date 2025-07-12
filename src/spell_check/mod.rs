@@ -23,8 +23,8 @@ impl CorrectionEngine {
             CorrectionEngine::Ollama(ref mut model) => {
                 model.generate(text)
             }
-            CorrectionEngine::CoreML(ref mut corrector) => {
-                corrector.correct(text).map_err(|e| e.into())
+            CorrectionEngine::CoreML(corrector) => {
+                corrector.correct(text).map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
             }
         }
     }
