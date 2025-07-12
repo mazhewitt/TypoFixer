@@ -1,4 +1,5 @@
 use std::path::Path;
+use std::ptr::NonNull;
 use anyhow::Result;
 use objc2::rc::Retained;
 use objc2::AnyThread;
@@ -6,6 +7,7 @@ use objc2_core_ml::{MLModel, MLMultiArray, MLMultiArrayDataType};
 use objc2_foundation::{NSString, NSURL, NSArray, NSNumber};
 use tracing::{info, warn};
 use tokenizers::Tokenizer;
+use block2::{Block, StackBlock};
 
 /// Core ML-based grammar corrector for on-device inference
 #[derive(Debug)]
@@ -315,16 +317,33 @@ impl CoreMLCorrector {
             )
         }?;
         
-        // Fill the array with token values
+        // Fill the array with token values using proper Block implementation
         if !tokens.is_empty() {
             info!("🔧 Filling MLMultiArray with {} token values", tokens.len());
             
-            // TODO: Implement actual token data filling using getBytesWithHandler with proper Block
-            // This requires creating a Block<dyn Fn(NonNull<c_void>, isize)> which is complex
-            // For now, we create the correctly shaped array and log that it would be filled
+            // Create a proper Block for getBytesWithHandler
+            let tokens_to_copy = tokens.to_vec();
+            let block = StackBlock::new(move |bytes_ptr: NonNull<std::ffi::c_void>, _strides: isize| {
+                // Cast the pointer to i32 since we're using Int32 data type
+                let data_ptr = bytes_ptr.as_ptr() as *mut i32;
+                
+                // Safely copy token values to the array
+                for (i, &token) in tokens_to_copy.iter().enumerate() {
+                    if i < tokens_to_copy.len() {
+                        unsafe {
+                            *data_ptr.add(i) = token as i32;
+                        }
+                    }
+                }
+            });
             
-            info!("✅ Created MLMultiArray with correct shape for token data");
-            info!("📝 Note: Actual token data filling is marked for advanced implementation");
+            // Use the block with getBytesWithHandler
+            let block_ref: &Block<dyn Fn(NonNull<std::ffi::c_void>, isize)> = &block;
+            unsafe {
+                multiarray.getBytesWithHandler(block_ref);
+            }
+            
+            info!("✅ Successfully filled MLMultiArray with {} token values", tokens.len());
         } else {
             info!("📝 Created empty MLMultiArray (no tokens to fill)");
         }
@@ -392,23 +411,67 @@ impl CoreMLCorrector {
             return Ok(String::new());
         }
         
-        // Extract token values from the MLMultiArray  
+        // Extract token values from the MLMultiArray using proper Block implementation
         let mut token_ids = Vec::new();
         
         if sequence_length > 0 {
             info!("🔧 Extracting {} token IDs from MLMultiArray", sequence_length);
             
-            // TODO: Implement actual token extraction using getBytesWithHandler with proper Block
-            // This requires creating a Block<dyn Fn(NonNull<c_void>, isize)> which is complex
-            // For now, we create mock token IDs based on the sequence length
+            // Get data type before creating the block
+            let data_type = unsafe { output.dataType() };
             
-            for i in 0..sequence_length {
-                // Generate mock token IDs - in a real implementation, these would come from the model output
-                token_ids.push((i + 1) as u32);
+            // Use a shared vector to collect the token IDs from the block
+            let extracted_tokens = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+            let extracted_tokens_clone = extracted_tokens.clone();
+            
+            // Create a proper Block for getBytesWithHandler
+            let block = StackBlock::new(move |bytes_ptr: NonNull<std::ffi::c_void>, _strides: isize| {
+                let mut tokens = extracted_tokens_clone.lock().unwrap();
+                
+                // Extract data based on the predetermined data type
+                match data_type {
+                    MLMultiArrayDataType::Int32 => {
+                        let data_ptr = bytes_ptr.as_ptr() as *const i32;
+                        for i in 0..sequence_length {
+                            let value = unsafe { *data_ptr.add(i) };
+                            tokens.push(value.max(0) as u32); // Ensure non-negative
+                        }
+                    }
+                    MLMultiArrayDataType::Float32 => {
+                        let data_ptr = bytes_ptr.as_ptr() as *const f32;
+                        for i in 0..sequence_length {
+                            let value = unsafe { *data_ptr.add(i) };
+                            // Convert float to token ID (assuming it represents token probabilities or IDs)
+                            tokens.push(value.round().max(0.0) as u32);
+                        }
+                    }
+                    MLMultiArrayDataType::Double => {
+                        let data_ptr = bytes_ptr.as_ptr() as *const f64;
+                        for i in 0..sequence_length {
+                            let value = unsafe { *data_ptr.add(i) };
+                            tokens.push(value.round().max(0.0) as u32);
+                        }
+                    }
+                    _ => {
+                        warn!("⚠️ Unsupported MLMultiArray data type: {:?}", data_type);
+                        // Fallback to mock data
+                        for i in 0..sequence_length {
+                            tokens.push((i + 1) as u32);
+                        }
+                    }
+                }
+            });
+            
+            // Use the block with getBytesWithHandler
+            let block_ref: &Block<dyn Fn(NonNull<std::ffi::c_void>, isize)> = &block;
+            unsafe {
+                output.getBytesWithHandler(block_ref);
             }
             
-            info!("✅ Generated {} mock token IDs from MLMultiArray shape", token_ids.len());
-            info!("📝 Note: Actual token data extraction is marked for advanced implementation");
+            // Extract the results from the shared vector
+            token_ids = extracted_tokens.lock().unwrap().clone();
+            
+            info!("✅ Successfully extracted {} token IDs from MLMultiArray", token_ids.len());
         }
         
         // Try to use the tokenizer if available

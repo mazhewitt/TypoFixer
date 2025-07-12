@@ -2205,6 +2205,7 @@ version = "1.0.0"
 dependencies = [
  "accessibility-sys",
  "anyhow",
+ "block2",
  "chrono",
  "cocoa",
  "core-foundation 0.10.1",
