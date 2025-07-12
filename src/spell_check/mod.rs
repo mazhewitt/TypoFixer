@@ -3,6 +3,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
+pub mod coreml;
 pub mod coreml_corrector;
 pub use coreml_corrector::CoreMLCorrector;
 
