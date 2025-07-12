@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::ptr::NonNull;
 use anyhow::Result;
 use objc2::rc::Retained;
@@ -9,43 +9,296 @@ use tracing::{info, warn};
 use tokenizers::Tokenizer;
 use block2::{Block, StackBlock};
 
-/// Core ML-based grammar corrector for on-device inference
+/// Errors that can occur during Core ML text correction
+#[derive(Debug, thiserror::Error)]
+pub enum CorrectionError {
+    #[error("Model file not found: {path}")]
+    ModelNotFound { path: String },
+    
+    #[error("Failed to load Core ML model from {path}: {details}")]
+    ModelLoadFailed { path: String, details: String },
+    
+    #[error("Core ML model not loaded - call load_model() first")]
+    ModelNotLoaded,
+    
+    #[error("Tokenization failed: {details}")]
+    TokenizationFailed { details: String },
+    
+    #[error("Failed to create MLMultiArray: {details}")]
+    ArrayCreationFailed { details: String },
+    
+    #[error("Core ML inference failed: {details}")]
+    InferenceFailed { details: String },
+    
+    #[error("Failed to decode model output: {details}")]
+    DecodingFailed { details: String },
+    
+    #[error("Text post-processing failed: {details}")]
+    PostProcessingFailed { details: String },
+    
+    #[error("IO error: {source}")]
+    IoError {
+        #[from]
+        source: std::io::Error,
+    },
+}
+
+/// Manages Core ML model loading and lifecycle
 #[derive(Debug)]
-#[allow(dead_code)]
-pub struct CoreMLCorrector {
-    model_path: String,
+pub struct CoreMLModelManager {
+    model_path: PathBuf,
     model: Option<Retained<MLModel>>,
+}
+
+impl CoreMLModelManager {
+    /// Create a new model manager for the given path
+    pub fn new(model_path: impl Into<PathBuf>) -> Self {
+        Self {
+            model_path: model_path.into(),
+            model: None,
+        }
+    }
+    
+    /// Load the Core ML model (tries pre-compiled first, then direct loading)
+    pub fn load_model(&mut self) -> Result<(), CorrectionError> {
+        info!("🧠 Loading Core ML model from: {}", self.model_path.display());
+        
+        // First, check for pre-compiled model from build script
+        if let Some(compiled_path) = Self::get_precompiled_model_path() {
+            info!("🚀 Found pre-compiled Core ML model at: {}", compiled_path);
+            return self.load_compiled_model(&compiled_path);
+        }
+        
+        // Fallback to direct loading for development/testing
+        info!("📦 No pre-compiled model found, attempting direct loading");
+        self.load_direct()
+    }
+    
+    /// Check if model is currently loaded
+    pub fn is_loaded(&self) -> bool {
+        self.model.is_some()
+    }
+    
+    /// Get reference to loaded model
+    pub fn model(&self) -> Result<&MLModel, CorrectionError> {
+        self.model.as_ref().ok_or(CorrectionError::ModelNotLoaded)
+    }
+    
+    /// Get model path
+    pub fn model_path(&self) -> &Path {
+        &self.model_path
+    }
+    
+    /// Load model directly from the configured path
+    fn load_direct(&mut self) -> Result<(), CorrectionError> {
+        if !self.model_path.exists() {
+            return Err(CorrectionError::ModelNotFound {
+                path: self.model_path.display().to_string(),
+            });
+        }
+        
+        let model_path_str = self.model_path.to_string_lossy();
+        let ns_path = NSString::from_str(&model_path_str);
+        let model_url = unsafe { NSURL::fileURLWithPath(&ns_path) };
+        
+        match unsafe { MLModel::modelWithContentsOfURL_error(&model_url) } {
+            Ok(model) => {
+                self.model = Some(model);
+                info!("✅ Core ML model loaded successfully!");
+                Ok(())
+            }
+            Err(e) => {
+                Err(CorrectionError::ModelLoadFailed {
+                    path: self.model_path.display().to_string(),
+                    details: format!("{:?}", e),
+                })
+            }
+        }
+    }
+    
+    /// Load pre-compiled model from the given path
+    fn load_compiled_model(&mut self, compiled_path: &str) -> Result<(), CorrectionError> {
+        let path = Path::new(compiled_path);
+        if !path.exists() {
+            return Err(CorrectionError::ModelNotFound {
+                path: compiled_path.to_string(),
+            });
+        }
+        
+        let ns_path = NSString::from_str(compiled_path);
+        let model_url = unsafe { NSURL::fileURLWithPath(&ns_path) };
+        
+        match unsafe { MLModel::modelWithContentsOfURL_error(&model_url) } {
+            Ok(model) => {
+                self.model = Some(model);
+                info!("✅ Pre-compiled Core ML model loaded successfully!");
+                Ok(())
+            }
+            Err(e) => {
+                Err(CorrectionError::ModelLoadFailed {
+                    path: compiled_path.to_string(),
+                    details: format!("{:?}", e),
+                })
+            }
+        }
+    }
+    
+    /// Get the path to the pre-compiled model if it exists
+    fn get_precompiled_model_path() -> Option<String> {
+        // Check if build script provided a compiled model path
+        if let Some(compiled_path) = option_env!("COMPILED_MODEL_PATH") {
+            if !compiled_path.is_empty() {
+                let path = Path::new(compiled_path);
+                if path.exists() {
+                    return Some(compiled_path.to_string());
+                }
+            }
+        }
+        None
+    }
+}
+
+/// Handles text tokenization and detokenization
+#[derive(Debug)]
+pub struct TextProcessor {
     tokenizer: Option<Tokenizer>,
 }
 
-// Manual implementation of Send and Sync for CoreMLCorrector
-// This is safe because:
-// 1. We only access Core ML APIs from the main thread
-// 2. The model is loaded once and only used for inference
-// 3. The tokenizer is thread-safe
-unsafe impl Send for CoreMLCorrector {}
-unsafe impl Sync for CoreMLCorrector {}
+impl TextProcessor {
+    /// Create a new text processor
+    pub fn new() -> Self {
+        Self { tokenizer: None }
+    }
+    
+    /// Load tokenizer from the model directory
+    pub fn load_tokenizer(&mut self, model_path: &Path) -> Result<(), CorrectionError> {
+        let tokenizer_paths = [
+            model_path.join("tokenizer.json"),
+            model_path.parent().unwrap_or(model_path).join("tokenizer.json"),
+            model_path.parent().unwrap_or(model_path).join("vocab.json"),
+        ];
+        
+        for tokenizer_path in &tokenizer_paths {
+            if tokenizer_path.exists() {
+                info!("🔤 Loading tokenizer from: {}", tokenizer_path.display());
+                match Tokenizer::from_file(tokenizer_path) {
+                    Ok(tokenizer) => {
+                        self.tokenizer = Some(tokenizer);
+                        info!("✅ Tokenizer loaded successfully!");
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        warn!("⚠️ Failed to load tokenizer from {}: {}", tokenizer_path.display(), e);
+                        continue;
+                    }
+                }
+            }
+        }
+        
+        warn!("⚠️ No tokenizer found, will use basic text processing");
+        Ok(()) // Not finding a tokenizer is not an error - we have fallbacks
+    }
+    
+    /// Tokenize text into token IDs
+    pub fn tokenize(&self, text: &str) -> Result<Vec<u32>, CorrectionError> {
+        info!("📝 Tokenizing text: '{}'", text);
+        
+        if text.trim().is_empty() {
+            return Ok(Vec::new());
+        }
+        
+        if let Some(tokenizer) = &self.tokenizer {
+            match tokenizer.encode(text, false) {
+                Ok(encoding) => {
+                    let tokens = encoding.get_ids().iter().map(|&id| id as u32).collect();
+                    info!("✅ Tokenized into {} tokens using trained tokenizer", tokens.len());
+                    Ok(tokens)
+                }
+                Err(e) => {
+                    warn!("⚠️ Tokenizer failed, using fallback: {}", e);
+                    Ok(self.fallback_tokenize(text))
+                }
+            }
+        } else {
+            Ok(self.fallback_tokenize(text))
+        }
+    }
+    
+    /// Detokenize token IDs back to text
+    pub fn detokenize(&self, token_ids: &[u32]) -> Result<String, CorrectionError> {
+        if let Some(tokenizer) = &self.tokenizer {
+            match tokenizer.decode(token_ids, false) {
+                Ok(text) => {
+                    info!("🔤 Successfully decoded {} tokens using tokenizer: '{}'", token_ids.len(), text);
+                    Ok(text)
+                }
+                Err(e) => {
+                    warn!("⚠️ Tokenizer decode failed, using fallback: {}", e);
+                    Ok(self.fallback_detokenize(token_ids))
+                }
+            }
+        } else {
+            Ok(self.fallback_detokenize(token_ids))
+        }
+    }
+    
+    /// Simple character-based tokenization fallback
+    fn fallback_tokenize(&self, text: &str) -> Vec<u32> {
+        text.chars()
+            .map(|c| c as u32)
+            .filter(|&token_id| token_id <= 127) // ASCII only for safety
+            .collect()
+    }
+    
+    /// Simple character-based detokenization fallback
+    fn fallback_detokenize(&self, token_ids: &[u32]) -> String {
+        token_ids.iter()
+            .filter_map(|&token_id| {
+                if token_id > 0 && token_id <= 127 {
+                    Some(token_id as u8 as char)
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+}
+
+/// Core ML-based grammar corrector for on-device inference
+#[derive(Debug)]
+pub struct CoreMLCorrector {
+    model_manager: CoreMLModelManager,
+    text_processor: TextProcessor,
+}
 
 impl CoreMLCorrector {
     /// Create a new CoreMLCorrector instance
-    #[allow(dead_code)]
-    pub fn new(model_path: &Path) -> Result<Self> {
+    pub fn new(model_path: &Path) -> Result<Self, CorrectionError> {
         info!("🧠 Initializing Core ML-based grammar corrector...");
         
-        let model_path_str = model_path.to_string_lossy().to_string();
-        let mut corrector = Self {
-            model_path: model_path_str.clone(),
-            model: None,
-            tokenizer: None,
-        };
+        let mut model_manager = CoreMLModelManager::new(model_path);
+        let mut text_processor = TextProcessor::new();
         
         // Try to load the model - fail if it doesn't work
-        corrector.load_model()?;
+        model_manager.load_model()?;
         
-        // Try to load the tokenizer
-        corrector.load_tokenizer()?;
+        // Try to load the tokenizer (not critical if it fails)
+        text_processor.load_tokenizer(model_path)?;
         
-        Ok(corrector)
+        Ok(Self {
+            model_manager,
+            text_processor,
+        })
+    }
+    
+    /// Get model loading status
+    pub fn is_model_loaded(&self) -> bool {
+        self.model_manager.is_loaded()
+    }
+    
+    /// Get model path
+    pub fn model_path(&self) -> &Path {
+        self.model_manager.model_path()
     }
     
     /// Load the Core ML model
@@ -154,49 +407,42 @@ impl CoreMLCorrector {
     }
     
     /// Correct grammar and spelling in the given text
-    pub fn correct(&mut self, text: &str) -> Result<String> {
+    /// Correct text using the loaded Core ML model
+    pub fn correct(&self, text: &str) -> Result<String, CorrectionError> {
         info!("🔧 Correcting text with Core ML: '{}'", text);
         
-        // Only use the Core ML model - fail if it's not available
-        match self.model.as_ref() {
-            Some(model) => {
-                self.coreml_inference(text, model)
-            }
-            None => {
-                Err(anyhow::anyhow!("Core ML model not loaded"))
-            }
-        }
+        // Get the loaded model
+        let model = self.model_manager.model()?;
+        
+        // Perform the full inference pipeline
+        self.coreml_inference(text, model)
     }
     
     /// Perform Core ML inference with the actual model
-    fn coreml_inference(&self, text: &str, model: &MLModel) -> Result<String> {
+    fn coreml_inference(&self, text: &str, model: &MLModel) -> Result<String, CorrectionError> {
         info!("🤖 Using Core ML inference for: '{}'", text);
         
         // Step 1: Tokenize the input text
-        let tokens = self.tokenize_text(text)?;
+        let tokens = self.text_processor.tokenize(text)?;
         info!("📝 Tokenized input into {} tokens", tokens.len());
         
         // Step 2: Create MLMultiArray input from tokens
-        let input_array = self.create_ml_multiarray(&tokens)?;
+        let input_array = Self::create_ml_multiarray(&tokens)?;
         info!("🔧 Created MLMultiArray with shape for {} tokens", tokens.len());
         
-        // Step 3: Run Core ML model prediction
-        match self.predict_with_model(&input_array, Some(model)) {
-            Ok(output_array) => {
-                info!("✅ Core ML model prediction successful");
-                
-                // Step 4: Decode the output back to text
-                let corrected_text = self.decode_output(&output_array)?;
-                info!("🔤 Decoded output: '{}'", corrected_text);
-                
-                // Step 5: Apply any post-processing if needed
-                let final_text = self.post_process_text(&corrected_text, text)?;
-                info!("✅ Core ML inference completed: '{}' -> '{}'", text, final_text);
-                
-                Ok(final_text)
-            }
-            Err(e) => {
-                warn!("❌ Core ML prediction failed: {}", e);
+        // Step 3: Run Core ML model prediction (simplified identity transformation for now)
+        let output_array = Self::predict_with_model(&input_array, model)?;
+        info!("✅ Core ML model prediction successful");
+        
+        // Step 4: Decode the output back to text
+        let corrected_text = self.text_processor.detokenize(&Self::extract_tokens(&output_array)?)?;
+        info!("🔤 Decoded output: '{}'", corrected_text);
+        
+        // Step 5: Apply post-processing
+        let final_text = Self::post_process_text(&corrected_text, text)?;
+        info!("✅ Core ML inference completed: '{}' -> '{}'", text, final_text);
+        
+        Ok(final_text)
                 // For now, return original text on prediction failure
                 // In a production system, you might want to fall back to rule-based corrections
                 info!("🔄 Returning original text due to prediction failure");
