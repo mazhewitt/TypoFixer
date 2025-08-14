@@ -110,16 +110,31 @@ impl TypoFixer {
         model_path: &str,
         verbose: bool,
     ) -> Result<Self> {
-        if verbose {
-            info!("🔧 Loading model configuration from: {}", config_path);
+        #[cfg(target_os = "macos")]
+        {
+            let (qwen_config, effective_base) = Self::find_and_load_qwen_config(
+                Some(config_path),
+                Some(model_path),
+                verbose,
+            )?;
+            if verbose {
+                info!("📁 Loading model from base directory: {}", effective_base.display());
+            }
+            let model = QwenModel::load_from_directory(&effective_base, Some(qwen_config))
+                .context("Failed to load QwenModel from local directory")?;
+            if verbose {
+                info!("✅ QwenModel loaded successfully from config");
+            }
+            let prompt_template = PromptTemplate::new();
+            return Ok(Self { model, prompt_template, verbose });
         }
-
-        let model_config = ModelConfig::load_from_file(config_path)
-            .context("Failed to load model configuration file")?;
-
-        let qwen_config = QwenConfig::from_model_config(model_config);
-
-        Self::load_local_model(model_path, verbose, Some(qwen_config)).await
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = (config_path, model_path, verbose);
+            return Err(anyhow::anyhow!(
+                "Model loading is only supported on macOS with CoreML. Current platform is not supported."
+            ));
+        }
     }
 
     /// Create a new TypoFixer with custom naming configuration
@@ -146,66 +161,31 @@ impl TypoFixer {
             if verbose {
                 info!("📥 Downloading model from HuggingFace Hub...");
             }
-
-            // Download the model from HuggingFace Hub
             let model_path = model_downloader::ensure_model_downloaded(model_id, verbose)
                 .context("Failed to download model from HuggingFace Hub")?;
-
+            let (qwen_config, effective_base) = if let Some(cfg) = custom_config {
+                (cfg, model_path.clone())
+            } else {
+                Self::find_and_load_qwen_config(None, Some(model_path.to_str().unwrap()), verbose)?
+            };
             if verbose {
-                info!("📦 Model downloaded to: {:?}", model_path);
+                info!("� Model downloaded to: {:?}", model_path);
                 info!("🔧 Loading QwenModel components...");
             }
-
-            // Use custom config if provided, otherwise try to get config by model ID
-            let config = custom_config.unwrap_or_else(|| {
-                if verbose {
-                    info!(
-                        "🔍 Looking for built-in configuration for model: {}",
-                        model_id
-                    );
-                }
-                if let Some(mut model_config) = get_builtin_config(model_id) {
-                    if verbose {
-                        info!("🔧 Using built-in configuration for model: {}", model_id);
-                    }
-                    // Attempt to patch component file paths relative to downloaded directory
-                    if let Some(path_str) = model_path.to_str() {
-                        let base = std::path::Path::new(path_str);
-                        Self::adjust_component_paths(&mut model_config, base, verbose);
-                    }
-                    QwenConfig::from_model_config(model_config)
-                } else {
-                    if verbose {
-                        warn!("⚠️ No built-in configuration found for model: {}", model_id);
-                        let available = list_builtin_models();
-                        info!("📋 Available built-in models: {:?}", available);
-                        info!("🔧 Using default configuration (may fail)");
-                    }
-                    QwenConfig::default()
-                }
-            });
-
-            // Load the QwenModel from the downloaded components
-            let model = QwenModel::load_from_directory(&model_path, Some(config))
+            let model = QwenModel::load_from_directory(&effective_base, Some(qwen_config))
                 .context("Failed to load QwenModel from downloaded components")?;
-
             if verbose {
                 info!("✅ QwenModel loaded successfully");
             }
-
-            // Create the prompt template with examples suitable for typo fixing
             let prompt_template = PromptTemplate::new();
-
             Ok(Self {
                 model,
                 prompt_template,
                 verbose,
             })
         }
-
         #[cfg(not(target_os = "macos"))]
         {
-            // On non-macOS platforms, return an appropriate error
             let _ = (model_id, verbose, custom_config);
             Err(anyhow::anyhow!(
                 "Model loading is only supported on macOS with CoreML. Current platform is not supported."
@@ -224,56 +204,106 @@ impl TypoFixer {
             if verbose {
                 info!("📁 Loading model from local path: {}", model_path);
             }
-
             let path = Path::new(model_path);
             if !path.exists() {
                 return Err(anyhow::anyhow!("Model path does not exist: {}", model_path));
             }
-
-            // Use custom config if provided, otherwise try to auto-detect from known CLI configs
-            let config = match custom_config {
-                Some(cfg) => cfg,
-                None => {
-                    // 1. Look for explicit candle ModelConfig in model directory
-                    if let Some(cfg) = Self::try_load_model_dir_config(path, verbose) {
-                        cfg
-                    } else if let Some(cfg) = Self::try_discover_cli_config(path, verbose) {
-                        cfg
-                    } else {
-                        if verbose {
-                            warn!("⚠️ No explicit config found. Falling back to default QwenConfig (may lack component file paths)");
-                        }
-                        QwenConfig::default()
-                    }
-                }
+            let (qwen_config, effective_base) = if let Some(cfg) = custom_config {
+                (cfg, path.to_path_buf())
+            } else {
+                Self::find_and_load_qwen_config(None, Some(model_path), verbose)?
             };
-
-            // Load the QwenModel from the local directory
-            let model = QwenModel::load_from_directory(path, Some(config))
+            let model = QwenModel::load_from_directory(&effective_base, Some(qwen_config))
                 .context("Failed to load QwenModel from local directory")?;
-
             if verbose {
                 info!("✅ QwenModel loaded successfully from local path");
             }
-
-            // Create the prompt template with examples suitable for typo fixing
             let prompt_template = PromptTemplate::new();
-
             Ok(Self {
                 model,
                 prompt_template,
                 verbose,
             })
         }
-
         #[cfg(not(target_os = "macos"))]
         {
-            // On non-macOS platforms, return an appropriate error
             let _ = (model_path, verbose, custom_config);
             Err(anyhow::anyhow!(
                 "Model loading is only supported on macOS with CoreML. Current platform is not supported."
             ))
         }
+    }
+    #[cfg(target_os = "macos")]
+    fn find_and_load_qwen_config(
+        config_path: Option<&str>,
+        model_path: Option<&str>,
+        verbose: bool,
+    ) -> Result<(QwenConfig, PathBuf)> {
+        use std::collections::HashMap;
+        let mut model_config = if let Some(config_path) = config_path {
+            if verbose {
+                info!("� Loading model configuration from: {}", config_path);
+            }
+            ModelConfig::load_from_file(config_path)
+                .context("Failed to load model configuration file")?
+        } else if let Some(model_path) = model_path {
+            let path = Path::new(model_path);
+            if let Some(mut mc) = Self::try_discover_cli_model_config(path, verbose) {
+                if verbose {
+                    info!("🔧 Using discovered CLI configuration");
+                }
+                Self::adjust_component_paths(&mut mc, path, verbose);
+                return Ok((QwenConfig::from_model_config(mc), path.to_path_buf()));
+            } else if let Some(mut mc) = get_builtin_config(model_path) {
+                if verbose {
+                    info!("🔧 Using built-in configuration for model: {}", model_path);
+                }
+                Self::adjust_component_paths(&mut mc, path, verbose);
+                return Ok((QwenConfig::from_model_config(mc), path.to_path_buf()));
+            } else {
+                if verbose {
+                    warn!("⚠️ No built-in configuration found for model: {}", model_path);
+                    let available = list_builtin_models();
+                    info!("📋 Available built-in models: {:?}", available);
+                    info!("🔧 Using default configuration (may fail)");
+                }
+                return Ok((QwenConfig::default(), path.to_path_buf()));
+            }
+        } else {
+            return Err(anyhow::anyhow!("No config_path or model_path provided to find_and_load_qwen_config"));
+        };
+
+        // Try to determine a base directory from component file paths that actually exist.
+        let mut candidates: Vec<PathBuf> = Vec::new();
+        for comp in model_config.components.values() {
+            if let Some(fp) = &comp.file_path {
+                let p = PathBuf::from(fp);
+                if p.exists() {
+                    if let Some(parent) = p.parent() {
+                        candidates.push(parent.to_path_buf());
+                    }
+                }
+            }
+        }
+        let effective_base = if candidates.is_empty() {
+            if let Some(model_path) = model_path {
+                PathBuf::from(model_path)
+            } else {
+                PathBuf::new()
+            }
+        } else {
+            let mut counts: HashMap<PathBuf, usize> = HashMap::new();
+            for c in candidates {
+                *counts.entry(c).or_insert(0) += 1;
+            }
+            let (best_dir, _) = counts
+                .into_iter()
+                .max_by_key(|(_, n)| *n)
+                .unwrap();
+            Self::adjust_component_paths(&mut model_config, &best_dir, verbose);
+            best_dir
+        };
+        Ok((QwenConfig::from_model_config(model_config), effective_base))
     }
 
     #[cfg(target_os = "macos")]
@@ -350,6 +380,64 @@ impl TypoFixer {
                                 }
                                 Self::adjust_component_paths(&mut mc, model_dir, verbose);
                                 return Some(QwenConfig::from_model_config(mc));
+                            }
+                            Err(e) => {
+                                if verbose {
+                                    warn!("⚠️ Failed to parse CLI config {}: {e}", path.display());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    #[cfg(target_os = "macos")]
+    fn try_discover_cli_model_config(model_dir: &Path, verbose: bool) -> Option<ModelConfig> {
+        use std::env;
+        use std::fs;
+        let cwd = env::current_dir().ok();
+        let mut search_roots = vec![];
+        if let Some(c) = &cwd {
+            search_roots.push(c.clone());
+        }
+        if let Some(c) = &cwd {
+            search_roots.push(c.join("typo-fixer-cli"));
+        }
+
+        let model_hint = model_dir.file_name().and_then(|s| s.to_str()).unwrap_or("");
+        let name_candidates = ["qwen-typo-fixer-ane", "qwen-typo-fixer", "typo-fixer"];
+
+        for root in search_roots {
+            let configs_dir = root.join("configs");
+            if !configs_dir.is_dir() {
+                continue;
+            }
+            if verbose {
+                info!("🔍 Searching for CLI config in {}", configs_dir.display());
+            }
+            if let Ok(entries) = fs::read_dir(&configs_dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.extension().and_then(|e| e.to_str()) != Some("json") {
+                        continue;
+                    }
+                    let file_name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
+                    if name_candidates
+                        .iter()
+                        .any(|cand| file_name.contains(cand) || model_hint.contains(cand))
+                    {
+                        if verbose {
+                            info!("🔧 Found candidate CLI config: {}", path.display());
+                        }
+                        match ModelConfig::load_from_file(&path) {
+                            Ok(mc) => {
+                                if verbose {
+                                    info!("✅ Loaded CLI configuration: {}", path.display());
+                                }
+                                return Some(mc);
                             }
                             Err(e) => {
                                 if verbose {
@@ -557,7 +645,9 @@ pub struct TypoFixerLib {
 impl TypoFixerLib {
     /// Create a new TypoFixerLib instance by downloading a model from HuggingFace Hub.
     pub async fn new(model_id: Option<String>, verbose: bool) -> Result<Self> {
-        let model_id = model_id.unwrap_or_else(|| "mazhewitt/qwen-typo-fixer".to_string());
+        // Prefer the CoreML-packaged model by default for macOS tests
+        let model_id = model_id
+            .unwrap_or_else(|| "mazhewitt/qwen-typo-fixer-coreml".to_string());
 
         let typo_fixer = TypoFixer::new(&model_id, verbose).await?;
 

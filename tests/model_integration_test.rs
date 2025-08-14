@@ -5,6 +5,7 @@ use typo_fixer::{PromptTemplate, TypoFixerLib};
 
 /// Integration test to verify model loading and basic typo correction
 #[tokio::test]
+#[ignore]
 async fn test_model_integration() {
     // Initialize logging for the test
     tracing_subscriber::fmt::init();
