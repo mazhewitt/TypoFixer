@@ -10,7 +10,7 @@ use tracing::{info, warn};
 /// Template for typo fixing prompts with few-shot examples
 /// Based on the typo-fixer-cli approach
 pub struct PromptTemplate {
-    examples: Vec<(String, String)>, // (input with typos, corrected output)
+    pub examples: Vec<(String, String)>, // (input with typos, corrected output)
 }
 
 impl PromptTemplate {
@@ -64,17 +64,7 @@ impl PromptTemplate {
         prompt
     }
 
-    /// Add a custom example to the prompt template
-    pub fn add_example(&mut self, input_with_typos: String, corrected_output: String) {
-        self.examples.push((input_with_typos, corrected_output));
-    }
-
-    /// Clear all examples (for custom prompting)
-    pub fn clear_examples(&mut self) {
-        self.examples.clear();
-    }
-
-    /// Get the number of examples currently in the template
+    /// Get the number of examples in the template
     pub fn example_count(&self) -> usize {
         self.examples.len()
     }
@@ -95,17 +85,14 @@ pub struct TypoFixer {
 
 impl TypoFixer {
     /// Create a new TypoFixer by loading the model from HuggingFace Hub
-    pub async fn new(model_id: &str, verbose: bool) -> Result<Self> {
-        Self::new_with_config(model_id, verbose, None).await
+    pub async fn new(model_id: Option<&str>, verbose: bool) -> Result<Self> {
+        let model_id = model_id.unwrap_or("mazhewitt/qwen-typo-fixer-coreml");
+        Self::load_model(model_id, verbose, None).await
     }
 
-    /// Create a new TypoFixer by loading the model from a local directory
-    pub async fn new_from_local(model_path: &str, verbose: bool) -> Result<Self> {
-        Self::load_local_model(model_path, verbose, None).await
-    }
 
-    /// Create a new TypoFixer by loading the model with a configuration file
-    pub async fn new_with_config_file(
+    /// Create a new TypoFixer with a configuration file
+    pub async fn new_with_config(
         config_path: &str,
         model_path: &str,
         verbose: bool,
@@ -138,19 +125,6 @@ impl TypoFixer {
                 "Model loading is only supported on macOS with CoreML. Current platform is not supported."
             ));
         }
-    }
-
-    /// Create a new TypoFixer with custom naming configuration
-    pub async fn new_with_config(
-        model_id: &str,
-        verbose: bool,
-        custom_config: Option<QwenConfig>,
-    ) -> Result<Self> {
-        if verbose {
-            info!("🔄 Loading typo-fixing model: {}", model_id);
-        }
-
-        Self::load_model(model_id, verbose, custom_config).await
     }
 
     /// Load the model from HuggingFace Hub using candle-coreml
@@ -196,46 +170,6 @@ impl TypoFixer {
         }
     }
 
-    /// Load the model from a local directory using candle-coreml
-    async fn load_local_model(
-        model_path: &str,
-        verbose: bool,
-        custom_config: Option<QwenConfig>,
-    ) -> Result<Self> {
-        #[cfg(target_os = "macos")]
-        {
-            if verbose {
-                info!("📁 Loading model from local path: {}", model_path);
-            }
-            let path = Path::new(model_path);
-            if !path.exists() {
-                return Err(anyhow::anyhow!("Model path does not exist: {}", model_path));
-            }
-            let (qwen_config, effective_base) = if let Some(cfg) = custom_config {
-                (cfg, path.to_path_buf())
-            } else {
-                Self::find_and_load_qwen_config(None, Some(model_path), verbose)?
-            };
-            let model = QwenModel::load_from_directory(&effective_base, Some(qwen_config))
-                .context("Failed to load QwenModel from local directory")?;
-            if verbose {
-                info!("✅ QwenModel loaded successfully from local path");
-            }
-            let prompt_template = PromptTemplate::new();
-            Ok(Self {
-                model,
-                prompt_template,
-                verbose,
-            })
-        }
-        #[cfg(not(target_os = "macos"))]
-        {
-            let _ = (model_path, verbose, custom_config);
-            Err(anyhow::anyhow!(
-                "Model loading is only supported on macOS with CoreML. Current platform is not supported."
-            ))
-        }
-    }
     #[cfg(target_os = "macos")]
     fn find_and_load_qwen_config(
         config_path: Option<&str>,
@@ -309,93 +243,7 @@ impl TypoFixer {
         Ok((QwenConfig::from_model_config(model_config), effective_base))
     }
 
-    #[cfg(target_os = "macos")]
-    fn try_load_model_dir_config(model_dir: &Path, verbose: bool) -> Option<QwenConfig> {
-        let candidate = model_dir.join("config.json");
-        if candidate.exists() {
-            if verbose {
-                info!("🔧 Found config.json in model directory, attempting to load...");
-            }
-            match ModelConfig::load_from_file(&candidate) {
-                Ok(mut mc) => {
-                    if verbose {
-                        info!("✅ Loaded configuration from model directory");
-                    }
-                    Self::adjust_component_paths(&mut mc, model_dir, verbose);
-                    Some(QwenConfig::from_model_config(mc))
-                }
-                Err(e) => {
-                    if verbose {
-                        warn!("⚠️ Failed to parse model directory config: {e}");
-                    }
-                    None
-                }
-            }
-        } else {
-            None
-        }
-    }
 
-    #[cfg(target_os = "macos")]
-    fn try_discover_cli_config(model_dir: &Path, verbose: bool) -> Option<QwenConfig> {
-        use std::env;
-        use std::fs;
-        let cwd = env::current_dir().ok();
-        let mut search_roots = vec![];
-        if let Some(c) = &cwd {
-            search_roots.push(c.clone());
-        }
-        // If running from workspace root, also add typo-fixer-cli subfolder
-        if let Some(c) = &cwd {
-            search_roots.push(c.join("typo-fixer-cli"));
-        }
-
-        let model_hint = model_dir.file_name().and_then(|s| s.to_str()).unwrap_or("");
-        let name_candidates = ["qwen-typo-fixer-ane", "qwen-typo-fixer", "typo-fixer"];
-
-        for root in search_roots {
-            let configs_dir = root.join("configs");
-            if !configs_dir.is_dir() {
-                continue;
-            }
-            if verbose {
-                info!("🔍 Searching for CLI config in {}", configs_dir.display());
-            }
-            if let Ok(entries) = fs::read_dir(&configs_dir) {
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    if path.extension().and_then(|e| e.to_str()) != Some("json") {
-                        continue;
-                    }
-                    let file_name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
-                    // Must match candidate names and hint
-                    if name_candidates
-                        .iter()
-                        .any(|cand| file_name.contains(cand) || model_hint.contains(cand))
-                    {
-                        if verbose {
-                            info!("🔧 Found candidate CLI config: {}", path.display());
-                        }
-                        match ModelConfig::load_from_file(&path) {
-                            Ok(mut mc) => {
-                                if verbose {
-                                    info!("✅ Loaded CLI configuration: {}", path.display());
-                                }
-                                Self::adjust_component_paths(&mut mc, model_dir, verbose);
-                                return Some(QwenConfig::from_model_config(mc));
-                            }
-                            Err(e) => {
-                                if verbose {
-                                    warn!("⚠️ Failed to parse CLI config {}: {e}", path.display());
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        None
-    }
 
     #[cfg(target_os = "macos")]
     fn try_discover_cli_model_config(model_dir: &Path, verbose: bool) -> Option<ModelConfig> {
@@ -483,18 +331,14 @@ impl TypoFixer {
         }
     }
 
-    /// Fix typos in the given text using default settings
-    fn extract_correction(&self, raw_output: &str) -> Result<String> {
-        extract_correction_from_raw(raw_output, self.verbose)
+
+    /// Fix typos in the given text (deterministic by default)
+    pub async fn fix_typos(&mut self, text: &str) -> Result<String> {
+        self.fix_typos_with_options(text, 0.0, Some(16)).await
     }
 
-    /// Generate a correction for the given text (deterministic by default)
-    pub async fn fix_text(&mut self, text: &str) -> Result<String> {
-        self.fix_text_with_options(text, 0.0, Some(16)).await
-    }
-
-    /// Generate a correction with custom temperature and token cap
-    pub async fn fix_text_with_options(
+    /// Fix typos with custom temperature and max tokens
+    pub async fn fix_typos_with_options(
         &mut self,
         text: &str,
         temperature: f32,
@@ -522,11 +366,6 @@ impl TypoFixer {
             }
             Ok(text.to_string())
         }
-    }
-
-    /// Get mutable reference to the prompt template for customization
-    pub fn prompt_template_mut(&mut self) -> &mut PromptTemplate {
-        &mut self.prompt_template
     }
 
     /// Get reference to the prompt template
@@ -668,71 +507,18 @@ pub(crate) fn choose_correction_from_raw(original: &str, raw_output: &str) -> Op
     }
 }
 
-/// Main library interface for fixing typos using candle-coreml.
-/// Wrapper around TypoFixer to match typo-fixer-cli patterns
-pub struct TypoFixerLib {
-    typo_fixer: TypoFixer,
-}
 
-impl TypoFixerLib {
-    /// Create a new TypoFixerLib instance by downloading a model from HuggingFace Hub.
-    pub async fn new(model_id: Option<String>, verbose: bool) -> Result<Self> {
-        // Prefer the CoreML-packaged model by default for macOS tests
-        let model_id = model_id
-            .unwrap_or_else(|| "mazhewitt/qwen-typo-fixer-coreml".to_string());
-
-        let typo_fixer = TypoFixer::new(&model_id, verbose).await?;
-
-        Ok(Self { typo_fixer })
-    }
-
-    /// Create a new TypoFixerLib instance from a local model directory.
-    pub async fn new_from_local(model_path: String, verbose: bool) -> Result<Self> {
-        let typo_fixer = TypoFixer::new_from_local(&model_path, verbose).await?;
-
-        Ok(Self { typo_fixer })
-    }
-
-    /// Create a new TypoFixerLib instance with an explicit configuration file.
-    pub async fn new_with_config_file(
-        config_path: &str,
-        model_path: &str,
-        verbose: bool,
-    ) -> Result<Self> {
-        let typo_fixer = TypoFixer::new_with_config_file(config_path, model_path, verbose).await?;
-
-        Ok(Self { typo_fixer })
-    }
-
-    /// Fix typos in the given text using default settings.
-    pub async fn fix_typos(&mut self, text: &str) -> Result<String> {
-        self.typo_fixer.fix_text(text).await
-    }
-
-    /// Fix typos with custom generation parameters.
-    pub async fn fix_typos_with_options(
-        &mut self,
-        text: &str,
-        temperature: f32,
-        max_tokens: Option<usize>,
-    ) -> Result<String> {
-        self.typo_fixer
-            .fix_text_with_options(text, temperature, max_tokens)
-            .await
-    }
-}
-
-/// Generate correction using the model wrapper (for backwards compatibility)
-pub async fn generate_correction(text: &str, model: &mut Option<TypoFixerLib>) -> Result<String> {
+/// Generate correction synchronously
+pub fn generate_correction_sync(text: &str, model: &mut Option<TypoFixer>) -> Result<String> {
     info!("Generating correction for: '{}'", text);
 
     if let Some(ref mut model) = model {
-        let result = model.fix_typos(text).await;
+        let rt = tokio::runtime::Runtime::new()?;
+        let result = rt.block_on(model.fix_typos(text));
         match result {
             Ok(corrected) => {
-                // Defense in depth: apply plausibility gating here, too
                 if !is_correction_plausible(text, &corrected) {
-                    warn!("⚠️ Wrapper rejected implausible correction, falling back to original");
+                    warn!("⚠️ Rejected implausible correction, falling back to original");
                     return Ok(text.to_string());
                 }
                 info!("Generated correction: '{}'", corrected);
@@ -740,19 +526,12 @@ pub async fn generate_correction(text: &str, model: &mut Option<TypoFixerLib>) -
             }
             Err(e) => {
                 info!("Typo correction failed: {}", e);
-                // Return original text if correction fails
                 Ok(text.to_string())
             }
         }
     } else {
         Err(anyhow::anyhow!("Model not loaded"))
     }
-}
-
-/// Generate correction synchronously (for backward compatibility)
-pub fn generate_correction_sync(text: &str, model: &mut Option<TypoFixerLib>) -> Result<String> {
-    let rt = tokio::runtime::Runtime::new()?;
-    rt.block_on(generate_correction(text, model))
 }
 
 #[cfg(test)]
@@ -762,7 +541,7 @@ mod tests {
     #[tokio::test]
     async fn test_typo_fixer_creation_with_invalid_model() {
         // Test that TypoFixer creation fails gracefully with an invalid model
-        let result = TypoFixer::new("nonexistent/invalid-model", false).await;
+        let result = TypoFixer::new(Some("nonexistent/invalid-model"), false).await;
         assert!(
             result.is_err(),
             "Expected TypoFixer::new to fail with invalid model"

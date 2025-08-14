@@ -1,6 +1,6 @@
 use std::time::Duration;
 use tokio::time::timeout;
-use typo_fixer::TypoFixerLib;
+use typo_fixer::TypoFixer;
 
 /// Integration test with a model that actually works
 #[tokio::test]
@@ -16,7 +16,7 @@ async fn test_working_model_integration() {
 
     let model_result = timeout(
         Duration::from_secs(600), // 10 minute timeout for download
-        TypoFixerLib::new(Some(model_id.to_string()), true),
+        TypoFixer::new(Some(model_id), true),
     )
     .await;
 
@@ -97,7 +97,7 @@ async fn test_end_to_end_typo_correction() {
     
     let mut model = timeout(
         Duration::from_secs(600), // 10 minute timeout
-        TypoFixerLib::new(Some(model_id.to_string()), false), // Quiet loading
+        TypoFixer::new(Some(model_id), false), // Quiet loading
     )
     .await
     .expect("Model loading timeout")

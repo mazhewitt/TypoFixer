@@ -1,7 +1,7 @@
 use candle_coreml::ModelConfig;
 use std::time::Duration;
 use tokio::time::timeout;
-use typo_fixer::{PromptTemplate, TypoFixerLib};
+use typo_fixer::TypoFixer;
 
 /// Real integration test that verifies actual model loading and typo correction
 /// This test requires real model files to be available and will fail if they're not
@@ -50,7 +50,7 @@ async fn test_real_model_loading_and_inference() {
     println!("\n🔄 Step 2: Loading model from config file (NO FALLBACKS)...");
     let model_result = timeout(
         Duration::from_secs(120), // 2 minute timeout
-        TypoFixerLib::new_with_config_file(config_path, ".", true),
+        TypoFixer::new_with_config(config_path, ".", true),
     )
     .await;
 
@@ -193,7 +193,7 @@ async fn test_real_huggingface_model_loading() {
 
     let model_result = timeout(
         Duration::from_secs(300), // 5 minute timeout for download
-        TypoFixerLib::new(Some("mazhewitt/qwen-typo-fixer-coreml".to_string()), true),
+        TypoFixer::new(Some("mazhewitt/qwen-typo-fixer-coreml"), true),
     )
     .await;
 
@@ -237,7 +237,7 @@ async fn test_model_performance_benchmark() {
     // Load model
     let mut model = timeout(
         Duration::from_secs(120),
-        TypoFixerLib::new_with_config_file("configs/qwen-typo-fixer-ane.json", ".", false), // No verbose logging for benchmark
+        TypoFixer::new_with_config("configs/qwen-typo-fixer-ane.json", ".", false), // No verbose logging for benchmark
     )
     .await
     .expect("Benchmark model loading timed out")

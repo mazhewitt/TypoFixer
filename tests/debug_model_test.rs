@@ -1,6 +1,6 @@
 use std::time::Duration;
 use tokio::time::timeout;
-use typo_fixer::TypoFixerLib;
+use typo_fixer::TypoFixer;
 
 /// Debug test to understand model generation issues
 #[tokio::test]
@@ -16,7 +16,7 @@ async fn test_debug_model_generation() {
 
     let mut model = timeout(
         Duration::from_secs(300), // Shorter timeout since we know it loads
-        TypoFixerLib::new(Some(model_id.to_string()), true),
+        TypoFixer::new(Some(model_id), true),
     )
     .await
     .expect("Model loading timeout")

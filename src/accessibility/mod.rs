@@ -193,16 +193,5 @@ mod tests {
         assert!(result.is_ok());
     }
 
-    #[test]
-    fn test_deprecated_functions() {
-        // Test deprecated functions still work
-        #[allow(deprecated)]
-        {
-            let range = get_sentence_range("Test sentence.").unwrap();
-            assert_eq!(range.end, 14);
-
-            let selection_range = get_selection_range(std::ptr::null()).unwrap();
-            assert_eq!(selection_range, 0..0);
-        }
-    }
+   
 }

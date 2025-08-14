@@ -1,6 +1,6 @@
 use std::time::Duration;
 use tokio::time::timeout;
-use typo_fixer::TypoFixerLib;
+use typo_fixer::TypoFixer;
 
 /// Test using the proven working model from typo-fixer-cli
 #[tokio::test]
@@ -32,7 +32,7 @@ async fn test_proven_working_model_integration() {
     println!("\n🔄 Loading model with config file (same as working CLI)...");
     let model_result = timeout(
         Duration::from_secs(120), // 2 minutes should be enough for local loading
-        TypoFixerLib::new_with_config_file(config_path, model_path, true),
+        TypoFixer::new_with_config(config_path, model_path, true),
     )
     .await;
 
@@ -125,7 +125,7 @@ async fn test_proven_model_local_loading() {
 
     let model_result = timeout(
         Duration::from_secs(120),
-        TypoFixerLib::new_from_local(model_path.to_string(), true),
+        TypoFixer::new_with_config("configs/qwen-typo-fixer-ane.json", model_path, true),
     )
     .await;
 
@@ -187,7 +187,7 @@ async fn test_proven_model_performance() {
     // Load model quietly for performance testing
     let mut model = timeout(
         Duration::from_secs(120),
-        TypoFixerLib::new_with_config_file(config_path, model_path, false), // No verbose
+        TypoFixer::new_with_config(config_path, model_path, false), // No verbose
     )
     .await
     .expect("Performance test model loading timeout")

@@ -1,6 +1,6 @@
 use std::time::Duration;
 use tokio::time::timeout;
-use typo_fixer::{TypoFixer, TypoFixerLib};
+use typo_fixer::TypoFixer;
 
 /// Test the core TypoFixer API with real model loading
 #[tokio::test]
@@ -10,10 +10,10 @@ async fn test_typo_fixer_api_integration() {
     tracing_subscriber::fmt::try_init().ok();
 
     // Test 1: Create TypoFixer directly from local config
-    println!("\n📋 Testing TypoFixer::new_with_config_file...");
+    println!("\n📋 Testing TypoFixer::new_with_config...");
     let typo_fixer = timeout(
         Duration::from_secs(120),
-        TypoFixer::new_with_config_file("configs/qwen-typo-fixer-ane.json", ".", true),
+        TypoFixer::new_with_config("configs/qwen-typo-fixer-ane.json", ".", true),
     )
     .await
     .expect("TypoFixer loading timed out")
@@ -31,17 +31,17 @@ async fn test_typo_fixer_api_integration() {
     assert!(test_prompt.contains("test input"), "Prompt should contain input");
     println!("✅ Prompt template working correctly");
 
-    // Test 3: Test TypoFixerLib wrapper API
-    println!("\n🔧 Testing TypoFixerLib API...");
+    // Test 3: Test TypoFixer wrapper API
+    println!("\n🔧 Testing TypoFixer API...");
     let mut typo_fixer_lib = timeout(
         Duration::from_secs(120),
-        TypoFixerLib::new_with_config_file("configs/qwen-typo-fixer-ane.json", ".", true),
+        TypoFixer::new_with_config("configs/qwen-typo-fixer-ane.json", ".", true),
     )
     .await
-    .expect("TypoFixerLib loading timed out")
-    .expect("TypoFixerLib loading failed");
+    .expect("TypoFixer loading timed out")
+    .expect("TypoFixer loading failed");
 
-    println!("✅ TypoFixerLib created successfully");
+    println!("✅ TypoFixer created successfully");
 
     // Test 4: API consistency - both APIs should work the same way
     println!("\n🔄 Testing API consistency...");
@@ -52,12 +52,12 @@ async fn test_typo_fixer_api_integration() {
         typo_fixer_lib.fix_typos(test_input),
     )
     .await
-    .expect("TypoFixerLib inference timed out")
-    .expect("TypoFixerLib inference failed");
+    .expect("TypoFixer inference timed out")
+    .expect("TypoFixer inference failed");
 
-    println!("   TypoFixerLib result: '{test_input}' → '{lib_result}'");
+    println!("   TypoFixer result: '{test_input}' → '{lib_result}'");
     
-    assert!(!lib_result.is_empty(), "TypoFixerLib must produce output");
+    assert!(!lib_result.is_empty(), "TypoFixer must produce output");
     assert!(lib_result.len() < 1000, "Output should be reasonable length");
 
     println!("✅ API integration test PASSED!");
@@ -74,7 +74,7 @@ async fn test_multiple_model_loading_methods() {
     println!("\n1️⃣ Testing default HuggingFace loading...");
     let mut model1 = timeout(
         Duration::from_secs(300),
-        TypoFixerLib::new(None, false), // Use default model
+        TypoFixer::new(None, false), // Use default model
     )
     .await
     .expect("Default model loading timed out")
@@ -94,7 +94,7 @@ async fn test_multiple_model_loading_methods() {
     println!("\n2️⃣ Testing specific HuggingFace model...");
     let mut model2 = timeout(
         Duration::from_secs(300),
-        TypoFixerLib::new(Some("mazhewitt/qwen-typo-fixer-coreml".to_string()), false),
+        TypoFixer::new(Some("mazhewitt/qwen-typo-fixer-coreml"), false),
     )
     .await
     .expect("Specific model loading timed out")
@@ -115,7 +115,7 @@ async fn test_multiple_model_loading_methods() {
         println!("\n3️⃣ Testing config file model...");
         let mut model3 = timeout(
             Duration::from_secs(120),
-            TypoFixerLib::new_with_config_file("configs/qwen-typo-fixer-ane.json", ".", false),
+            TypoFixer::new_with_config("configs/qwen-typo-fixer-ane.json", ".", false),
         )
         .await
         .expect("Config model loading timed out")
@@ -148,7 +148,7 @@ async fn test_model_error_handling() {
     println!("\n❌ Testing invalid model ID...");
     let invalid_result = timeout(
         Duration::from_secs(60),
-        TypoFixerLib::new(Some("invalid/nonexistent-model".to_string()), false),
+        TypoFixer::new(Some("invalid/nonexistent-model"), false),
     )
     .await;
 
@@ -162,7 +162,7 @@ async fn test_model_error_handling() {
     println!("\n❌ Testing invalid config file...");
     let invalid_config_result = timeout(
         Duration::from_secs(30),
-        TypoFixerLib::new_with_config_file("nonexistent-config.json", ".", false),
+        TypoFixer::new_with_config("nonexistent-config.json", ".", false),
     )
     .await;
 
@@ -176,7 +176,7 @@ async fn test_model_error_handling() {
     println!("\n📝 Testing empty input handling...");
     let mut model = timeout(
         Duration::from_secs(120),
-        TypoFixerLib::new(None, false),
+        TypoFixer::new(None, false),
     )
     .await
     .expect("Model loading for empty test timed out")

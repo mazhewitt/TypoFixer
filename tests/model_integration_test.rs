@@ -1,7 +1,7 @@
 use candle_coreml::ModelConfig;
 use std::time::Duration;
 use tokio::time::timeout;
-use typo_fixer::{PromptTemplate, TypoFixerLib};
+use typo_fixer::{PromptTemplate, TypoFixer};
 
 /// Integration test to verify model loading and basic typo correction
 #[tokio::test]
@@ -16,7 +16,7 @@ async fn test_model_integration() {
     println!("📋 Testing model loading with config file...");
     let model_result = timeout(
         Duration::from_secs(300), // 5 minute timeout for model download
-        TypoFixerLib::new_with_config_file("configs/qwen-typo-fixer-ane.json", ".", true),
+        TypoFixer::new_with_config("configs/qwen-typo-fixer-ane.json", ".", true),
     )
     .await;
 
@@ -30,7 +30,7 @@ async fn test_model_integration() {
             // Fallback to HuggingFace Hub loading
             timeout(
                 Duration::from_secs(300),
-                TypoFixerLib::new(Some("mazhewitt/qwen-typo-fixer-coreml".to_string()), true),
+                TypoFixer::new(Some("mazhewitt/qwen-typo-fixer-coreml"), true),
             )
             .await
             .expect("Timeout")
@@ -100,7 +100,7 @@ async fn test_model_integration() {
     }
 
     // Test 4: Model info
-    println!("📊 Model information: TypoFixerLib ready for typo correction");
+    println!("📊 Model information: TypoFixer ready for typo correction");
 
     println!("🎉 Model integration test completed!");
 }

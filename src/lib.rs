@@ -8,5 +8,5 @@ pub mod spell_check;
 // Re-export commonly used types
 pub use config::Config;
 pub use spell_check::{
-    generate_correction, generate_correction_sync, PromptTemplate, TypoFixer, TypoFixerLib,
+    generate_correction_sync, PromptTemplate, TypoFixer,
 };

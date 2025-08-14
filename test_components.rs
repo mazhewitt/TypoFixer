@@ -3,7 +3,7 @@
 
 use candle_coreml::ModelConfig;
 use std::path::Path;
-use typo_fixer::{PromptTemplate, TypoFixerLib};
+use typo_fixer::{PromptTemplate, TypoFixer};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -86,12 +86,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n🏗️ Testing Model Wrapper Infrastructure...");
 
     // Test fallback path handling
-    let wrapper_result = TypoFixerLib::new(Some("nonexistent/test-model".to_string()), false).await;
+    let wrapper_result = TypoFixer::new(Some("nonexistent/test-model"), false).await;
 
     match wrapper_result {
         Ok(_wrapper) => {
             println!("✅ Model wrapper created successfully (fallback mode)");
-            println!("   📊 Model info: TypoFixerLib ready for typo correction");
+            println!("   📊 Model info: TypoFixer ready for typo correction");
         }
         Err(e) => {
             println!("✅ Model wrapper properly handled missing model: {e}");

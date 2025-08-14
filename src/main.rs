@@ -22,14 +22,14 @@ use accessibility::{
 use config::Config;
 use hotkey::{setup_hotkey, start_hotkey_event_loop_with_init};
 use menu_bar::{get_menu_bar, setup_menu_bar};
-use spell_check::{generate_correction_sync, is_correction_plausible, TypoFixerLib};
+use spell_check::{generate_correction_sync, is_correction_plausible, TypoFixer};
 
 // Global state
-// We can't store TypoFixerLib in static due to Send/Sync constraints from CoreML
+// We can't store TypoFixer in static due to Send/Sync constraints from CoreML
 // Instead we'll use thread_local storage or handle this differently
 use std::cell::RefCell;
 thread_local! {
-    static LLAMA_MODEL: RefCell<Option<TypoFixerLib>> = const { RefCell::new(None) };
+    static TYPO_FIXER: RefCell<Option<TypoFixer>> = const { RefCell::new(None) };
 }
 static CONFIG: Lazy<Arc<RwLock<Config>>> = Lazy::new(|| Arc::new(RwLock::new(Config::default())));
 
@@ -113,7 +113,7 @@ fn process_text_correction() -> Result<bool, Box<dyn std::error::Error>> {
     }
 
     // Generate correction
-    let corrected = LLAMA_MODEL.with(|model_cell| {
+    let corrected = TYPO_FIXER.with(|model_cell| {
         let mut model_ref = model_cell.borrow_mut();
         generate_correction_sync(&text, &mut model_ref)
     })?;
@@ -235,17 +235,14 @@ async fn load_llama_model_async() -> Result<(), String> {
     let mut model = match config_path {
         Some(cfg) => {
             info!("Attempting config-based load from {}", cfg.display());
-            match TypoFixerLib::new_with_config_file(cfg.to_string_lossy().as_ref(), ".", true)
+            match TypoFixer::new_with_config(cfg.to_string_lossy().as_ref(), ".", true)
                 .await
             {
                 Ok(model) => model,
                 Err(e) => {
                     warn!("Config-based loading failed: {}", e);
                     info!("Falling back to HuggingFace Hub loading...");
-                    TypoFixerLib::new(
-                        Some("mazhewitt/qwen-typo-fixer-coreml".to_string()),
-                        true,
-                    )
+                    TypoFixer::new(Some("mazhewitt/qwen-typo-fixer-coreml"), true)
                     .await
                     .map_err(|e| format!("Failed to load fallback model: {e}"))?
                 }
@@ -255,7 +252,7 @@ async fn load_llama_model_async() -> Result<(), String> {
             warn!(
                 "Config file not found in executable/working directory tree; using fallback model"
             );
-            TypoFixerLib::new(Some("mazhewitt/qwen-typo-fixer-coreml".to_string()), true)
+            TypoFixer::new(Some("mazhewitt/qwen-typo-fixer-coreml"), true)
                 .await
                 .map_err(|e| format!("Failed to load fallback model: {e}"))?
         }
@@ -273,7 +270,7 @@ async fn load_llama_model_async() -> Result<(), String> {
 
     // Model is ready to use
 
-    LLAMA_MODEL.with(|model_cell| {
+    TYPO_FIXER.with(|model_cell| {
         *model_cell.borrow_mut() = Some(model);
     });
 
@@ -344,9 +341,9 @@ mod tests {
         let (_temp_dir, _model_path) = create_temp_model_file();
         let rt = tokio::runtime::Runtime::new().unwrap();
         // Try to create a model - this may fail in test environment, which is expected
-        match rt.block_on(TypoFixerLib::new(Some("test-model".to_string()), false)) {
+        match rt.block_on(TypoFixer::new(Some("test-model"), false)) {
             Ok(model) => {
-                LLAMA_MODEL.with(|model_cell| {
+                TYPO_FIXER.with(|model_cell| {
                     *model_cell.borrow_mut() = Some(model);
                 });
             }
@@ -451,7 +448,7 @@ mod tests {
         match result {
             Ok(()) => {
                 // If successful, verify model was loaded into global state
-                LLAMA_MODEL.with(|model_cell| {
+                TYPO_FIXER.with(|model_cell| {
                     let model_ref = model_cell.borrow();
                     assert!(
                         model_ref.is_some(),

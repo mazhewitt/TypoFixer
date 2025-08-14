@@ -4,7 +4,7 @@
 use candle_coreml::ModelConfig;
 use std::time::Duration;
 use tokio::time::timeout;
-use typo_fixer::TypoFixerLib;
+use typo_fixer::TypoFixer;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -40,7 +40,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let model_result = timeout(
         Duration::from_secs(120), // 2 minute timeout for quick test
-        TypoFixerLib::new_with_config_file("configs/qwen-typo-fixer-ane.json", ".", true),
+        TypoFixer::new_with_config("configs/qwen-typo-fixer-ane.json", ".", true),
     )
     .await;
 
@@ -55,7 +55,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             timeout(
                 Duration::from_secs(120),
-                TypoFixerLib::new(Some("mazhewitt/qwen-typo-fixer-coreml".to_string()), true),
+                TypoFixer::new(Some("mazhewitt/qwen-typo-fixer-coreml"), true),
             )
             .await??
         }
@@ -109,7 +109,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Test 5: Model Info
     println!("\n📊 Model Information:");
-    println!("   TypoFixerLib ready for typo correction");
+    println!("   TypoFixer ready for typo correction");
 
     println!("\n🎉 Quick integration test completed!");
     println!("💡 For comprehensive testing with multiple test cases, run:");
