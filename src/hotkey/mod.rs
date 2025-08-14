@@ -67,3 +67,35 @@ where
         }
     });
 }
+
+pub fn start_hotkey_event_loop_with_init<I, F>(init: I, callback: F)
+where
+    I: FnOnce() + Send + 'static,
+    F: Fn() + Send + 'static,
+{
+    info!("Starting hotkey event loop thread (with init)...");
+
+    thread::spawn(move || {
+        // Run initialization (e.g., load model) on this thread so thread_local state is shared
+        init();
+
+        let receiver = GlobalHotKeyEvent::receiver();
+        info!("Hotkey event loop thread started, listening for events...");
+
+        loop {
+            match receiver.try_recv() {
+                Ok(event) => {
+                    info!("📡 Received hotkey event: {:?}", event);
+                    if event.state == HotKeyState::Pressed {
+                        info!("🔥 Hotkey ⌘⌥S pressed!");
+                        println!("🔥 Hotkey ⌘⌥S pressed!");
+                        callback();
+                    }
+                }
+                Err(_) => {
+                    thread::sleep(Duration::from_millis(50));
+                }
+            }
+        }
+    });
+}

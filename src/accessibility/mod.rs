@@ -133,37 +133,7 @@ pub fn is_problematic_app() -> bool {
     AppleScriptManager::is_problematic_app()
 }
 
-// Legacy utility functions (marked as deprecated but kept for compatibility)
-#[deprecated(note = "Use TextExtractor::extract_last_sentence instead")]
-#[allow(dead_code)]
-pub fn get_sentence_range(text: &str) -> Result<Range<usize>, Box<dyn std::error::Error>> {
-    let (_extracted, range) = TextExtractor::extract_last_sentence(text);
-    Ok(range)
-}
 
-#[deprecated(note = "This function is not needed in the new architecture")]
-#[allow(dead_code)]
-pub fn get_selection_range(
-    _range_ref: *const std::ffi::c_void,
-) -> Result<Range<usize>, Box<dyn std::error::Error>> {
-    Ok(0..0)
-}
-
-#[deprecated(note = "Use AxApi methods instead")]
-#[allow(dead_code)]
-/// # Safety
-/// The ns_str parameter must be a valid NSString object
-pub unsafe fn nsstring_to_string(ns_str: cocoa::base::id) -> String {
-    use objc::{msg_send, sel, sel_impl};
-    let utf8_str: *const i8 = msg_send![ns_str, UTF8String];
-    if utf8_str.is_null() {
-        String::new()
-    } else {
-        std::ffi::CStr::from_ptr(utf8_str)
-            .to_string_lossy()
-            .to_string()
-    }
-}
 
 #[cfg(test)]
 mod tests {

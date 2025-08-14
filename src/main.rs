@@ -3,7 +3,6 @@ use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
-use std::thread;
 use std::time::Instant;
 use tracing::{debug, error, info, warn};
 
@@ -21,9 +20,9 @@ use accessibility::{
     set_text_with_fallbacks,
 };
 use config::Config;
-use hotkey::{setup_hotkey, start_hotkey_event_loop};
+use hotkey::{setup_hotkey, start_hotkey_event_loop_with_init};
 use menu_bar::{get_menu_bar, setup_menu_bar};
-use spell_check::{generate_correction_sync, TypoFixerLib};
+use spell_check::{generate_correction_sync, is_correction_plausible, TypoFixerLib};
 
 // Global state
 // We can't store TypoFixerLib in static due to Send/Sync constraints from CoreML
@@ -34,7 +33,7 @@ thread_local! {
 }
 static CONFIG: Lazy<Arc<RwLock<Config>>> = Lazy::new(|| Arc::new(RwLock::new(Config::default())));
 
-#[allow(dead_code)]
+
 fn handle_hotkey_press() {
     let start = Instant::now();
 
@@ -122,13 +121,7 @@ fn process_text_correction() -> Result<bool, Box<dyn std::error::Error>> {
     info!("Original text: '{}' (len: {})", text, text.len());
     info!("Corrected text: '{}' (len: {})", corrected, corrected.len());
 
-    // Check if correction is reasonable (allow up to 50% longer or same length)
-    if corrected.len() > text.len() + (text.len() / 2) + 20 {
-        warn!(
-            "Correction too long, aborting (original: {}, corrected: {})",
-            text.len(),
-            corrected.len()
-        );
+    if !is_correction_plausible(&text, &corrected) {
         return Ok(false);
     }
 
@@ -167,6 +160,9 @@ fn process_text_correction() -> Result<bool, Box<dyn std::error::Error>> {
     Ok(true)
 }
 
+// Expose viability logic for tests and to keep process_text_correction simple
+// was is_correction_viable; now using spell_check::is_correction_plausible
+
 #[allow(dead_code)]
 fn show_hud(message: &str) {
     // Mock implementation - use logging instead of terminal output
@@ -199,25 +195,81 @@ fn log_error(message: &str) {
 
 // This function is no longer needed - menu bar functionality is now in menu_bar.rs
 
+fn find_config_upwards(rel_path: &str) -> Option<PathBuf> {
+    // Prefer searching from the executable location up to the filesystem root
+    if let Ok(mut dir) = std::env::current_exe().and_then(|p| p.parent().map(|p| p.to_path_buf()).ok_or_else(|| std::io::Error::new(std::io::ErrorKind::Other, "no parent"))) {
+        loop {
+            let candidate = dir.join(rel_path);
+            if candidate.exists() {
+                return Some(candidate);
+            }
+            if let Some(parent) = dir.parent() {
+                dir = parent.to_path_buf();
+            } else {
+                break;
+            }
+        }
+    }
+    // Fallback: search from current working directory upwards
+    if let Ok(mut dir) = std::env::current_dir() {
+        loop {
+            let candidate = dir.join(rel_path);
+            if candidate.exists() {
+                return Some(candidate);
+            }
+            if let Some(parent) = dir.parent() {
+                dir = parent.to_path_buf();
+            } else {
+                break;
+            }
+        }
+    }
+    None
+}
+
 async fn load_llama_model_async() -> Result<(), String> {
     info!("Loading text correction model...");
 
     // Try to load with automatic configuration discovery first
-    let model =
-        match TypoFixerLib::new_with_config_file("configs/qwen-typo-fixer-ane.json", ".", true)
-            .await
-        {
-            Ok(model) => model,
-            Err(e) => {
-                warn!("Config-based loading failed: {}", e);
-                info!("Falling back to HuggingFace Hub loading...");
-
-                // Fallback to HuggingFace Hub loading
-                TypoFixerLib::new(Some("mazhewitt/qwen-typo-fixer-coreml".to_string()), true)
+    let config_path = find_config_upwards("configs/qwen-typo-fixer-ane.json");
+    let mut model = match config_path {
+        Some(cfg) => {
+            info!("Attempting config-based load from {}", cfg.display());
+            match TypoFixerLib::new_with_config_file(cfg.to_string_lossy().as_ref(), ".", true)
+                .await
+            {
+                Ok(model) => model,
+                Err(e) => {
+                    warn!("Config-based loading failed: {}", e);
+                    info!("Falling back to HuggingFace Hub loading...");
+                    TypoFixerLib::new(
+                        Some("mazhewitt/qwen-typo-fixer-coreml".to_string()),
+                        true,
+                    )
                     .await
                     .map_err(|e| format!("Failed to load fallback model: {e}"))?
+                }
             }
-        };
+        }
+        None => {
+            warn!(
+                "Config file not found in executable/working directory tree; using fallback model"
+            );
+            TypoFixerLib::new(Some("mazhewitt/qwen-typo-fixer-coreml".to_string()), true)
+                .await
+                .map_err(|e| format!("Failed to load fallback model: {e}"))?
+        }
+    };
+
+    // Warm up: run a tiny inference to initialize CoreML pipelines and caches
+    info!("🔥 Warming up model (tiny inference)...");
+    match model
+        .fix_typos_with_options("warmup", 0.0, Some(1))
+        .await
+    {
+        Ok(_) => info!("✅ Model warm-up complete"),
+        Err(e) => warn!("⚠️ Model warm-up failed (continuing): {}", e),
+    }
 
     // Model is ready to use
 
@@ -243,29 +295,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = Config::load();
     *CONFIG.write().unwrap() = config;
 
-    // Load model in background thread
-    std::thread::spawn(|| {
-        if let Err(e) = load_llama_model() {
-            error!("Failed to load model: {}", e);
-        }
-    });
-
     // Setup menu bar (this also configures the app as accessory)
     setup_menu_bar()?;
 
     // Setup hotkey
     setup_hotkey()?;
 
-    // Start hotkey event loop in background
-    thread::spawn(|| {
-        start_hotkey_event_loop(handle_hotkey_press);
-    });
-
-    // Give the model some time to load before continuing
-    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+    // Start hotkey event loop in background, but initialize the model on the same thread
+    start_hotkey_event_loop_with_init(
+        || {
+            if let Err(e) = load_llama_model() {
+                error!("Failed to load model: {}", e);
+            }
+        },
+        handle_hotkey_press,
+    );
 
     info!("TypoFixer started - Press ⌘⌥S to fix typos");
-    info!("🚀 TypoFixer is ready! Press ⌘⌥S to fix typos in any text field.");
+    info!("⏳ Model will finish loading shortly; hotkey will work once ready.");
 
     // Run the menu bar event loop (this will block until the app terminates)
     let menu_bar = get_menu_bar();
@@ -281,6 +328,7 @@ mod tests {
     use std::fs;
     use std::path::PathBuf;
     use tempfile::TempDir;
+    use crate::spell_check::{choose_correction_from_raw, is_correction_plausible};
 
     fn create_temp_model_file() -> (TempDir, PathBuf) {
         let temp_dir = TempDir::new().unwrap();
@@ -366,6 +414,27 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn test_extraction_rejects_implausible_short_output() {
+    // Given a longer input, plausibility gating should reject a single short word like "The"
+    let input = "This sentance has typoos ";
+    let raw = "<|endoftext|><|endoftext|>The<|endoftext|>The<|endoftext|>The.<|endoftext|>The.<|endoftext|>The.<|endoftext|>TheTheThe";
+
+    let chosen = choose_correction_from_raw(input, raw);
+    assert!(chosen.is_none(), "should reject implausible short output");
+    }
+
+    #[test]
+    fn test_viability_rejects_implausibly_short_correction() {
+        let original = "This sentance has typoos ";
+        let corrected = "The";
+        // Expect the viability check to reject this correction for a longer input
+        assert!(
+            !is_correction_plausible(original, corrected),
+            "viability should reject implausibly short correction"
+        );
     }
 
     #[test]

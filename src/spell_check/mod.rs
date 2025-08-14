@@ -51,7 +51,7 @@ impl PromptTemplate {
     pub fn create_few_shot_prompt(&self, input_text: &str) -> String {
         let mut prompt = String::new();
 
-        prompt.push_str("Fix typos in these sentences:\n\n");
+    prompt.push_str("Fix typos in these sentences. Respond only with the corrected sentence, no extra words.\n\n");
 
         // Add few-shot examples
         for (typo_text, correct_text) in &self.examples {
@@ -112,6 +112,9 @@ impl TypoFixer {
     ) -> Result<Self> {
         #[cfg(target_os = "macos")]
         {
+            if verbose {
+                info!("🔧 Loading model configuration from: {}", config_path);
+            }
             let (qwen_config, effective_base) = Self::find_and_load_qwen_config(
                 Some(config_path),
                 Some(model_path),
@@ -169,7 +172,7 @@ impl TypoFixer {
                 Self::find_and_load_qwen_config(None, Some(model_path.to_str().unwrap()), verbose)?
             };
             if verbose {
-                info!("� Model downloaded to: {:?}", model_path);
+                info!("📦 Model downloaded to: {:?}", model_path);
                 info!("🔧 Loading QwenModel components...");
             }
             let model = QwenModel::load_from_directory(&effective_base, Some(qwen_config))
@@ -242,7 +245,7 @@ impl TypoFixer {
         use std::collections::HashMap;
         let mut model_config = if let Some(config_path) = config_path {
             if verbose {
-                info!("� Loading model configuration from: {}", config_path);
+                info!("🔧 Loading model configuration from: {}", config_path);
             }
             ModelConfig::load_from_file(config_path)
                 .context("Failed to load model configuration file")?
@@ -401,16 +404,19 @@ impl TypoFixer {
         let cwd = env::current_dir().ok();
         let mut search_roots = vec![];
         if let Some(c) = &cwd {
-            search_roots.push(c.clone());
-        }
-        if let Some(c) = &cwd {
-            search_roots.push(c.join("typo-fixer-cli"));
+            // Walk up the directory tree to find a configs folder from any ancestor
+            let mut dir = Some(c.as_path());
+            while let Some(d) = dir {
+                search_roots.push(d.to_path_buf());
+                search_roots.push(d.join("typo-fixer-cli"));
+                dir = d.parent();
+            }
         }
 
         let model_hint = model_dir.file_name().and_then(|s| s.to_str()).unwrap_or("");
         let name_candidates = ["qwen-typo-fixer-ane", "qwen-typo-fixer", "typo-fixer"];
 
-        for root in search_roots {
+    for root in search_roots {
             let configs_dir = root.join("configs");
             if !configs_dir.is_dir() {
                 continue;
@@ -478,151 +484,44 @@ impl TypoFixer {
     }
 
     /// Fix typos in the given text using default settings
-    pub async fn fix_text(&mut self, text: &str) -> Result<String> {
-        self.fix_text_with_options(text, 0.1, None).await
+    fn extract_correction(&self, raw_output: &str) -> Result<String> {
+        extract_correction_from_raw(raw_output, self.verbose)
     }
 
-    /// Fix typos with custom temperature and max tokens
+    /// Generate a correction for the given text (deterministic by default)
+    pub async fn fix_text(&mut self, text: &str) -> Result<String> {
+        self.fix_text_with_options(text, 0.0, Some(16)).await
+    }
+
+    /// Generate a correction with custom temperature and token cap
     pub async fn fix_text_with_options(
         &mut self,
         text: &str,
         temperature: f32,
         max_tokens: Option<usize>,
     ) -> Result<String> {
-        if self.verbose {
-            info!("🔧 Fixing typos in: '{}'", text);
-            info!(
-                "   Temperature: {}, Max tokens: {:?}",
-                temperature, max_tokens
-            );
-        }
-
-        // Create the prompt using few-shot examples
+        // Build prompt
         let prompt = self.prompt_template.create_correction_prompt(text);
+        let max_toks = max_tokens.unwrap_or(16);
 
-        if self.verbose {
-            info!("📝 Generated prompt:\n{}", prompt);
-        }
-
-        // Generate the correction using the model
-        let max_tokens = max_tokens.unwrap_or(50);
-
-        let corrected_text = if temperature == 0.0 {
-            // Use deterministic generation (greedy)
-            self.generate_deterministic(&prompt, max_tokens).await?
-        } else {
-            // Use temperature sampling
-            self.generate_with_temperature(&prompt, temperature, max_tokens)
-                .await?
-        };
-
-        // Post-process the output to extract just the corrected text
-        let cleaned = self.extract_correction(&corrected_text)?;
-
-        if self.verbose {
-            info!("✅ Corrected: '{}' -> '{}'", text, cleaned);
-        }
-
-        Ok(cleaned)
-    }
-
-    /// Generate text using deterministic (greedy) sampling
-    async fn generate_deterministic(&mut self, prompt: &str, max_tokens: usize) -> Result<String> {
-        if self.verbose {
-            info!("🎯 Using deterministic (greedy) generation");
-        }
-
-        // Use candle-coreml's generate_text method with temperature 0.0
-        let generated_text = self
+        // Run generation via CoreML
+        let raw = self
             .model
-            .generate_text(prompt, max_tokens, 0.0)
-            .context("Failed to generate tokens deterministically")?;
+            .generate_text(prompt.as_str(), max_toks, temperature)
+            .map_err(|e| anyhow::anyhow!("Generation failed: {e}"))?;
 
-        Ok(generated_text)
-    }
-
-    /// Generate text using temperature sampling
-    async fn generate_with_temperature(
-        &mut self,
-        prompt: &str,
-        temperature: f32,
-        max_tokens: usize,
-    ) -> Result<String> {
-        if self.verbose {
-            info!(
-                "🎲 Using temperature sampling (temperature: {})",
-                temperature
-            );
-        }
-
-        // Use candle-coreml's generate_text method with specified temperature
-        let generated_text = self
-            .model
-            .generate_text(prompt, max_tokens, temperature)
-            .context("Failed to generate tokens with temperature")?;
-
-        Ok(generated_text)
-    }
-
-    /// Extract the corrected text from the model's output
-    fn extract_correction(&self, raw_output: &str) -> Result<String> {
-        if self.verbose {
-            info!("🔍 Raw model output: {:?}", raw_output);
-        }
-
-        // First, stop at the first <|endoftext|> token
-        let cleaned_output = if let Some(end_pos) = raw_output.find("<|endoftext|>") {
-            &raw_output[..end_pos]
-        } else {
-            raw_output
-        };
-
-        // Also handle other potential stopping patterns
-        let cleaned_output = cleaned_output
-            .split("Input:")
-            .next()
-            .unwrap_or(cleaned_output);
-        let cleaned_output = cleaned_output
-            .split("Output:")
-            .next()
-            .unwrap_or(cleaned_output);
-
-        // Split into lines and find the actual correction
-        let lines: Vec<&str> = cleaned_output.lines().collect();
-
-        // Look for the first meaningful line that looks like corrected text
-        for line in lines {
-            let trimmed = line.trim();
-
-            // Skip empty lines and prompt-like text
-            if trimmed.is_empty()
-                || trimmed.starts_with("Input:")
-                || trimmed.starts_with("Output:")
-                || trimmed.starts_with("Fix typos")
-                || trimmed.starts_with("the quick brown fox") // Skip template examples
-                || trimmed.starts_with("i can't believe it")
-                || trimmed.starts_with("receive the package")
-            {
-                continue;
-            }
-
-            // If this looks like actual content, use it
+        // Extract + plausibility-check. If implausible, fall back to original text.
+        if let Some(chosen) = choose_correction_from_raw(text, &raw) {
             if self.verbose {
-                info!("✅ Extracted correction: {:?}", trimmed);
+                info!("✅ Accepted plausible correction: {:?}", chosen);
             }
-            return Ok(trimmed.to_string());
+            Ok(chosen)
+        } else {
+            if self.verbose {
+                warn!("⚠️ Rejected implausible correction; returning original text");
+            }
+            Ok(text.to_string())
         }
-
-        // Fallback: clean up the entire output
-        let fallback = cleaned_output.trim();
-        if fallback.is_empty() {
-            return Err(anyhow::anyhow!("Model produced empty output"));
-        }
-
-        if self.verbose {
-            warn!("⚠️ Using fallback extraction: {:?}", fallback);
-        }
-        Ok(fallback.to_string())
     }
 
     /// Get mutable reference to the prompt template for customization
@@ -633,6 +532,139 @@ impl TypoFixer {
     /// Get reference to the prompt template
     pub fn prompt_template(&self) -> &PromptTemplate {
         &self.prompt_template
+    }
+}
+
+/// Shared plausibility check for corrections used by the UI layer and tests
+pub(crate) fn is_correction_plausible(original: &str, corrected: &str) -> bool {
+    let orig = original.trim();
+    let corr = corrected.trim();
+
+    // Length guard: no more than +50% + 20 chars
+    if corr.len() > orig.len() + (orig.len() / 2) + 20 {
+        return false;
+    }
+
+    // If original has spaces, require corrected to also contain at least one space
+    if orig.contains(' ') && !corr.contains(' ') {
+        return false;
+    }
+
+    // Repetition/low-diversity guard
+    let words: Vec<&str> = corr.split_whitespace().collect();
+    if words.len() >= 6 {
+        let uniq: std::collections::HashSet<&str> = words.iter().copied().collect();
+        if uniq.len() <= 2 {
+            return false;
+        }
+    }
+
+    true
+}
+
+/// Free function to extract the correction from raw model output (testable without a model)
+pub(crate) fn extract_correction_from_raw(raw_output: &str, verbose: bool) -> Result<String> {
+    if verbose {
+        info!("🔍 Raw model output: {:?}", raw_output);
+    }
+
+    // Strategy 0: First non-empty segment before <|endoftext|>
+    if let Some(seg) = raw_output
+        .split("<|endoftext|>")
+        .map(|s| s.trim())
+        .find(|s| !s.is_empty())
+    {
+        if let Some(line) = seg.lines().find(|l| !l.trim().is_empty()) {
+            let t = first_sentence(line.trim());
+            if !t.starts_with("Input:") && !t.starts_with("Output:") && !t.starts_with("Fix typos") {
+                if verbose {
+                    info!("✅ Extracted correction (first <|endoftext|> segment): {:?}", t);
+                }
+                return Ok(t.to_string());
+            }
+        }
+    }
+
+    // Strategy 1: Text after last Output:
+    let normalized = raw_output;
+    if let Some(pos) = normalized.rfind("Output:") {
+        let after = &normalized[pos + "Output:".len()..];
+        if let Some(text) = after.lines().find_map(|l| {
+            let t = first_sentence(l.trim());
+            if !t.is_empty() && !t.starts_with("Input:") && !t.starts_with("Fix typos") {
+                Some(t)
+            } else {
+                None
+            }
+        }) {
+            if verbose {
+                info!("✅ Extracted correction: {:?}", text);
+            }
+            return Ok(text.to_string());
+        }
+    }
+
+    // Strategy 2: First meaningful line
+    let cleaned_output = raw_output;
+    let lines: Vec<&str> = cleaned_output.lines().collect();
+    for line in &lines {
+    let trimmed = first_sentence(line.trim());
+        if trimmed.is_empty()
+            || trimmed.starts_with("Input:")
+            || trimmed.starts_with("Output:")
+            || trimmed.starts_with("Fix typos")
+            || trimmed.starts_with("the quick brown fox")
+            || trimmed.starts_with("i can't believe it")
+            || trimmed.starts_with("receive the package")
+        {
+            continue;
+        }
+        if verbose {
+            info!("✅ Extracted correction: {:?}", trimmed);
+        }
+        return Ok(trimmed.to_string());
+    }
+
+    // Strategy 3: Reverse scan for last meaningful non-empty line
+    for line in lines.iter().rev() {
+    let trimmed = first_sentence(line.trim());
+        if trimmed.is_empty()
+            || trimmed.starts_with("Input:")
+            || trimmed.starts_with("Output:")
+            || trimmed.starts_with("Fix typos")
+        {
+            continue;
+        }
+        return Ok(trimmed.to_string());
+    }
+
+    // Fallback
+    let fallback = first_sentence(cleaned_output.trim());
+    if fallback.is_empty() {
+        return Err(anyhow::anyhow!("Model produced empty output"));
+    }
+    Ok(fallback.to_string())
+}
+
+/// Keep only the first complete sentence from a string.
+fn first_sentence(s: &str) -> &str {
+    let bytes = s.as_bytes();
+    for (i, &b) in bytes.iter().enumerate() {
+        if matches!(b as char, '.' | '!' | '?') {
+            // Include the terminator
+            return &s[..=i];
+        }
+    }
+    s
+}
+
+/// Combine extraction and plausibility for testing end-to-end (without UI)
+pub(crate) fn choose_correction_from_raw(original: &str, raw_output: &str) -> Option<String> {
+    let extracted = extract_correction_from_raw(raw_output, true).ok()?;
+    if is_correction_plausible(original, &extracted) {
+        Some(extracted)
+    } else {
+        None
     }
 }
 
@@ -696,15 +728,22 @@ pub async fn generate_correction(text: &str, model: &mut Option<TypoFixerLib>) -
 
     if let Some(ref mut model) = model {
         let result = model.fix_typos(text).await;
-        match &result {
-            Ok(corrected) => info!("Generated correction: '{}'", corrected),
+        match result {
+            Ok(corrected) => {
+                // Defense in depth: apply plausibility gating here, too
+                if !is_correction_plausible(text, &corrected) {
+                    warn!("⚠️ Wrapper rejected implausible correction, falling back to original");
+                    return Ok(text.to_string());
+                }
+                info!("Generated correction: '{}'", corrected);
+                Ok(corrected)
+            }
             Err(e) => {
                 info!("Typo correction failed: {}", e);
                 // Return original text if correction fails
-                return Ok(text.to_string());
+                Ok(text.to_string())
             }
         }
-        result
     } else {
         Err(anyhow::anyhow!("Model not loaded"))
     }
@@ -754,7 +793,7 @@ mod tests {
         let prompt = template.create_correction_prompt("this sentance has typoos");
 
         // Check that prompt contains few-shot examples
-        assert!(prompt.contains("Fix typos in these sentences:"));
+    assert!(prompt.contains("Fix typos in these sentences. Respond only with the corrected sentence, no extra words."));
         assert!(prompt.contains("Input: the quik brown fox"));
         assert!(prompt.contains("Output: the quick brown fox"));
 
@@ -825,5 +864,29 @@ mod tests {
 
         // Fallback: clean up the entire output
         cleaned_output.trim().to_string()
+    }
+
+    #[test]
+    fn test_extraction_logged_raw_prefers_sentence_segment() {
+        // From logs: model produced multiple segments; we expect the first meaningful sentence
+        let raw = " This sentance has typos.<|endoftext|>This sentance has typoos.<|endoftext|>This sentance has typoos.<|endoftext|>This sentance has typoos.<|endoftext|>This sent sent sent sent";
+        let got = extract_correction_from_raw(raw, true).expect("should extract");
+        assert_eq!(got, "This sentance has typos.");
+    }
+
+    #[test]
+    fn test_choose_correction_rejects_the_only_output() {
+        let raw = "<|endoftext|><|endoftext|>The<|endoftext|>The<|endoftext|>The.<|endoftext|>The.";
+        let original = "This sentance has typoos ";
+        // Currently extraction would pick "The", but plausibility should reject it
+        let chosen = choose_correction_from_raw(original, raw);
+        assert!(chosen.is_none(), "Should reject implausible 'The' correction");
+    }
+
+    #[test]
+    fn test_plausibility_rejects_single_word_when_original_has_space() {
+        let original = "This sentance has typoos ";
+        let candidate = "The";
+        assert!(!is_correction_plausible(original, candidate));
     }
 }
