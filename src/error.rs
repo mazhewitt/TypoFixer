@@ -14,12 +14,12 @@ pub enum AppError {
 impl fmt::Display for AppError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            AppError::Accessibility(msg) => write!(f, "Accessibility error: {}", msg),
-            AppError::SpellCheck(msg) => write!(f, "Spell check error: {}", msg),
-            AppError::Config(msg) => write!(f, "Configuration error: {}", msg),
-            AppError::Hotkey(msg) => write!(f, "Hotkey error: {}", msg),
-            AppError::IO(err) => write!(f, "IO error: {}", err),
-            AppError::Other(msg) => write!(f, "Error: {}", msg),
+            AppError::Accessibility(msg) => write!(f, "Accessibility error: {msg}"),
+            AppError::SpellCheck(msg) => write!(f, "Spell check error: {msg}"),
+            AppError::Config(msg) => write!(f, "Configuration error: {msg}"),
+            AppError::Hotkey(msg) => write!(f, "Hotkey error: {msg}"),
+            AppError::IO(err) => write!(f, "IO error: {err}"),
+            AppError::Other(msg) => write!(f, "Error: {msg}"),
         }
     }
 }

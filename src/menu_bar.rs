@@ -2,13 +2,12 @@ use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2::{define_class, msg_send, sel, MainThreadOnly};
 use objc2_app_kit::{
-    NSApplication, NSApplicationActivationPolicy, NSApplicationDelegate, 
-    NSMenu, NSMenuItem, NSStatusBar, NSVariableStatusItemLength,
-    NSImage, NSAlert, NSCellImagePosition,
+    NSAlert, NSApplication, NSApplicationActivationPolicy, NSApplicationDelegate,
+    NSCellImagePosition, NSImage, NSMenu, NSMenuItem, NSStatusBar, NSVariableStatusItemLength,
 };
 use objc2_foundation::{
-    MainThreadMarker, NSNotification, NSObject, NSObjectProtocol, NSString,
-    NSAutoreleasePool, ns_string,
+    ns_string, MainThreadMarker, NSAutoreleasePool, NSNotification, NSObject, NSObjectProtocol,
+    NSString,
 };
 use tracing::info;
 
@@ -34,13 +33,18 @@ define_class!(
 
         #[unsafe(method(showAbout:))]
         fn show_about(&self, _sender: *const NSObject) {
-            unsafe { show_about_dialog(); }
+            unsafe {
+                show_about_dialog();
+            }
         }
 
         #[unsafe(method(quitApp:))]
         fn quit_app(&self, _sender: *const NSObject) {
-            let app = NSApplication::sharedApplication(unsafe { MainThreadMarker::new_unchecked() });
-            unsafe { app.terminate(None); }
+            let app =
+                NSApplication::sharedApplication(unsafe { MainThreadMarker::new_unchecked() });
+            unsafe {
+                app.terminate(None);
+            }
         }
     }
 );
@@ -53,13 +57,11 @@ impl AppDelegate {
 
     fn setup_status_bar(&self, mtm: MainThreadMarker) {
         info!("Setting up status bar...");
-        
+
         let status_bar = unsafe { NSStatusBar::systemStatusBar() };
         info!("Got system status bar");
-        
-        let status_item = unsafe { 
-            status_bar.statusItemWithLength(NSVariableStatusItemLength)
-        };
+
+        let status_item = unsafe { status_bar.statusItemWithLength(NSVariableStatusItemLength) };
         info!("Created status item");
 
         // Create an SF Symbol image for the status bar icon
@@ -69,14 +71,16 @@ impl AppDelegate {
                 None,
             )
         };
-        
+
         if let Some(image) = image {
-            unsafe { image.setTemplate(true); }
+            unsafe {
+                image.setTemplate(true);
+            }
             info!("Created template image");
-            
+
             let button = unsafe { status_item.button(mtm) };
             if let Some(button) = button {
-                unsafe { 
+                unsafe {
                     button.setImage(Some(&image));
                     button.setImagePosition(NSCellImagePosition::ImageOnly);
                 }
@@ -89,14 +93,16 @@ impl AppDelegate {
             let title = NSString::from_str("⌨️");
             let button = unsafe { status_item.button(mtm) };
             if let Some(button) = button {
-                unsafe { button.setTitle(&title); }
+                unsafe {
+                    button.setTitle(&title);
+                }
                 info!("Set button title to keyboard emoji");
             }
         }
 
         // Create the dropdown menu
         let menu = NSMenu::new(mtm);
-        
+
         // Create "About" menu item
         let about_item = unsafe {
             NSMenuItem::initWithTitle_action_keyEquivalent(
@@ -129,7 +135,9 @@ impl AppDelegate {
         }
 
         // Attach the menu to the status item
-        unsafe { status_item.setMenu(Some(&menu)); }
+        unsafe {
+            status_item.setMenu(Some(&menu));
+        }
 
         // Prevent deallocation by leaking
         Box::leak(Box::new(status_item));
@@ -148,18 +156,20 @@ impl MenuBar {
 
     pub fn setup(&mut self, mtm: MainThreadMarker) -> Result<(), Box<dyn std::error::Error>> {
         info!("Setting up menu-bar...");
-        
+
         let app = NSApplication::sharedApplication(mtm);
         app.setActivationPolicy(NSApplicationActivationPolicy::Accessory);
-        
+
         let delegate = AppDelegate::new(mtm);
         let delegate_ref = ProtocolObject::from_ref(&*delegate);
         app.setDelegate(Some(delegate_ref));
-        
-        unsafe { app.activate(); }
-        
+
+        unsafe {
+            app.activate();
+        }
+
         self.delegate = Some(delegate);
-        
+
         info!("✅ Menu-bar setup complete");
         Ok(())
     }

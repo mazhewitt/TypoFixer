@@ -1,5 +1,5 @@
-use std::path::PathBuf;
 use std::fs;
+use std::path::PathBuf;
 
 #[derive(Clone, Debug)]
 pub struct Config {
@@ -12,7 +12,8 @@ impl Default for Config {
         let home = std::env::var("HOME").unwrap_or_else(|_| "/Users/user".to_string());
         Self {
             model_path: PathBuf::from(&home).join("Models/llama3-8b-q4.gguf"),
-            config_path: PathBuf::from(&home).join("Library/Application Support/TypoFixer/config.toml"),
+            config_path: PathBuf::from(&home)
+                .join("Library/Application Support/TypoFixer/config.toml"),
         }
     }
 }
@@ -20,41 +21,40 @@ impl Default for Config {
 impl Config {
     pub fn load() -> Self {
         let config = Config::default();
-        
+
         // Ensure config directory exists
         if let Some(parent) = config.config_path.parent() {
             let _ = fs::create_dir_all(parent);
         }
-        
+
         // Load from file if exists
         if let Ok(contents) = fs::read_to_string(&config.config_path) {
             if let Ok(parsed) = contents.parse::<toml_edit::DocumentMut>() {
                 let mut new_config = config.clone();
-                
+
                 if let Some(model_path) = parsed.get("model_path").and_then(|v| v.as_str()) {
                     new_config.model_path = PathBuf::from(model_path);
                 }
-                
+
                 return new_config;
             }
         }
-        
+
         config
     }
-    
+
     #[allow(dead_code)]
     pub fn save(&self) -> Result<(), Box<dyn std::error::Error>> {
         let mut doc = toml_edit::DocumentMut::new();
         doc["model_path"] = toml_edit::value(self.model_path.to_string_lossy().to_string());
-        
+
         if let Some(parent) = self.config_path.parent() {
             fs::create_dir_all(parent)?;
         }
-        
+
         fs::write(&self.config_path, doc.to_string())?;
         Ok(())
     }
-    
 }
 
 #[cfg(test)]
@@ -65,7 +65,10 @@ mod tests {
     #[test]
     fn test_config_default() {
         let config = Config::default();
-        assert!(config.model_path.to_string_lossy().contains("llama3-8b-q4.gguf"));
+        assert!(config
+            .model_path
+            .to_string_lossy()
+            .contains("llama3-8b-q4.gguf"));
         assert!(config.config_path.to_string_lossy().contains("config.toml"));
     }
 
@@ -74,18 +77,23 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let config_path = temp_dir.path().join("config.toml");
         let model_path = temp_dir.path().join("test_model.gguf");
-        
+
         let mut config = Config::default();
         config.config_path = config_path.clone();
         config.model_path = model_path.clone();
-        
+
         // Test save
         config.save().unwrap();
         assert!(config_path.exists());
-        
-        // Test load
-        let loaded_config = Config::load();
-        // Note: load() creates a default config, so we need to test differently
-        assert!(loaded_config.model_path.to_string_lossy().contains("llama3-8b-q4.gguf"));
+
+        // Test that the file contains the expected content
+        let saved_content = fs::read_to_string(&config_path).unwrap();
+        assert!(saved_content.contains("test_model.gguf"));
+        assert!(saved_content.contains("model_path"));
+
+        // Test that we can parse the saved config file
+        let parsed = saved_content.parse::<toml_edit::DocumentMut>().unwrap();
+        let saved_model_path = parsed.get("model_path").and_then(|v| v.as_str()).unwrap();
+        assert!(saved_model_path.contains("test_model.gguf"));
     }
 }

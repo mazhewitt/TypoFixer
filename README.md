@@ -7,45 +7,34 @@ A powerful macOS application that provides instant, context-aware text correctio
 ## ✨ Features
 
 - **Global hotkey**: Press `⌘⌥S` (Command + Option + S) to fix typos in any text field
-- **LLM-powered correction**: Uses Ollama with local language models for intelligent spell and grammar checking
+- **LLM-powered correction**: Uses local Qwen CoreML models for intelligent spell and grammar checking
 - **Universal compatibility**: Works with native macOS apps and Electron-based applications (VS Code, Discord, etc.)
 - **Smart text extraction**: Automatically detects and extracts relevant text context for correction
 - **Robust fallback methods**: Accessibility API with clipboard and AppleScript fallbacks
 - **Secure field detection**: Automatically skips password fields for security
 - **Menu bar integration**: Convenient access from the macOS menu bar
 
-## 🚨 **IMPORTANT: Ollama Required**
+## 🚨 **IMPORTANT: Qwen CoreML Model Required**
 
-**TypoFixer requires Ollama to be installed and running with a language model.**
+**TypoFixer requires a Qwen CoreML model to be placed in the correct directory.**
 
-### Quick Ollama Setup:
-```bash
-# 1. Install Ollama
-curl -fsSL https://ollama.ai/install.sh | sh
-
-# 2. Download a language model (recommended: llama3.2:1b for speed)
-ollama pull llama3.2:1b
-
-# 3. Start Ollama (keep this running)
-ollama serve
-```
+### Quick Model Setup:
+1. Convert your Qwen model to CoreML format (if not already done)
+2. Place the model directory in `coreml-models/qwen-typo-fixer/`
+3. Ensure the model includes tokenizer files
 
 ## Prerequisites
 
 - **macOS 10.15+** (Intel or Apple Silicon)
-- **Ollama installed and running** (see above)
-- **Language model downloaded** (e.g., `llama3.2:1b`)
+- **Qwen CoreML model** placed in correct directory
 - **Accessibility permissions** (granted during setup)
 
 ## 📦 Installation
 
 ### Option 1: Download Release (Recommended for Users)
 
-1. **Install Ollama first**:
-   ```bash
-   curl -fsSL https://ollama.ai/install.sh | sh
-   ollama pull llama3.2:1b
-   ```
+1. **Set up Qwen CoreML model**:
+   - Place your converted Qwen model in `coreml-models/qwen-typo-fixer/`
 
 2. **Download TypoFixer**:
    - Get the latest `TypoFixer-v1.0.0.dmg` from [Releases](https://github.com/yourusername/typofixer/releases)

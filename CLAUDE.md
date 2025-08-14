@@ -1,0 +1,1 @@
+- test with the actual model files - mocks are good for unit tests, but to know the app works we need real integration tests, no fallbacks, no mocks, real working integration

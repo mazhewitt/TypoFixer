@@ -12,7 +12,7 @@ TypoFixer is a powerful macOS application that provides instant, context-aware t
 
 ### 🎯 Core Functionality
 - **Global Hotkey**: Press `Cmd+Option+S` anywhere to trigger text correction
-- **Smart AI Correction**: Uses local LLM models via Ollama for intelligent spell and grammar checking
+- **Smart AI Correction**: Uses local Qwen CoreML models for intelligent spell and grammar checking
 - **Universal Compatibility**: Works with native macOS apps and Electron-based applications
 - **Menu Bar Integration**: Convenient access from the macOS menu bar
 
@@ -32,8 +32,7 @@ TypoFixer is a powerful macOS application that provides instant, context-aware t
 
 ### Prerequisites
 1. **macOS 10.15+** (Intel or Apple Silicon)
-2. **Ollama** - Install from [ollama.ai](https://ollama.ai)
-3. **Language Model** - Download with: `ollama pull llama3.2:1b`
+2. **Automatic Model Download** - Your fine-tuned Qwen model will be downloaded automatically on first run
 
 ### Installation
 
@@ -60,10 +59,7 @@ make app
    - Go to System Preferences → Security & Privacy → Privacy → Accessibility
    - Add TypoFixer and enable it
 
-2. **Start Ollama** (if not running):
-   ```bash
-   ollama serve
-   ```
+2. **First Run**: The app will automatically download your Qwen model (this may take a few minutes)
 
 3. **Launch TypoFixer** - It will appear in your menu bar
 
@@ -139,13 +135,13 @@ Creates:
 ## ⚙️ Configuration
 
 TypoFixer automatically detects and configures:
-- Ollama endpoint (default: `http://localhost:11434`)
-- Model selection (default: first available model)
+- CoreML model path (default: `coreml-models/qwen-typo-fixer/`)
+- Model configuration (automatically detected)
 - Hotkey (Cmd+Option+S, customizable in future versions)
 
 ## 🔒 Privacy & Security
 
-- **Local Processing**: All text correction happens locally via Ollama
+- **Local Processing**: All text correction happens locally via CoreML
 - **No Data Collection**: Your text never leaves your machine
 - **Secure Fields**: Password fields are automatically skipped
 - **Accessibility**: Only reads/writes when explicitly triggered
@@ -157,9 +153,10 @@ TypoFixer automatically detects and configures:
 **"Accessibility permissions not granted"**
 - Grant permissions in System Preferences → Security & Privacy → Privacy → Accessibility
 
-**"No model found"**
-- Install a model: `ollama pull llama3.2:1b`
-- Ensure Ollama is running: `ollama serve`
+**"Model download failed"**
+- Check your internet connection
+- Ensure you have sufficient disk space (~2GB for model cache)
+- The model will be cached in `~/.cache/candle-coreml/` for future runs
 
 **Text not being corrected in some apps**
 - TypoFixer automatically falls back to clipboard method for problematic apps
@@ -177,7 +174,7 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 
 ### Development Setup
 1. Install Rust: `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
-2. Install Ollama: `curl -fsSL https://ollama.ai/install.sh | sh`
+2. Add your Qwen CoreML model to the project directory
 3. Clone and build: `git clone ... && cd typofixer && make dev-deps && make build`
 
 ## 📄 License
@@ -186,7 +183,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🙏 Acknowledgments
 
-- **Ollama** for providing excellent local LLM infrastructure
+- **Apple CoreML** for efficient on-device machine learning inference
 - **Rust Community** for incredible accessibility and GUI libraries
 - **macOS Accessibility Framework** for enabling seamless text interaction
 

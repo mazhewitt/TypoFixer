@@ -8,7 +8,7 @@ impl AppleScriptManager {
     /// Extract text from focused field using AppleScript
     pub fn extract_text() -> Result<String, Box<dyn std::error::Error>> {
         info!("🍎 Attempting AppleScript text extraction...");
-        
+
         let script = r#"
             tell application "System Events"
                 set frontApp to name of first application process whose frontmost is true
@@ -27,12 +27,9 @@ impl AppleScriptManager {
                 end tell
             end tell
         "#;
-        
-        let output = Command::new("osascript")
-            .arg("-e")
-            .arg(script)
-            .output()?;
-        
+
+        let output = Command::new("osascript").arg("-e").arg(script).output()?;
+
         if output.status.success() {
             let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
             if !text.is_empty() {
@@ -40,7 +37,7 @@ impl AppleScriptManager {
                 return Ok(text);
             }
         }
-        
+
         Err("AppleScript text extraction failed".into())
     }
 
@@ -52,12 +49,9 @@ impl AppleScriptManager {
             end tell
             return frontApp
         "#;
-        
-        let output = Command::new("osascript")
-            .arg("-e")
-            .arg(script)
-            .output()?;
-        
+
+        let output = Command::new("osascript").arg("-e").arg(script).output()?;
+
         if output.status.success() {
             let app_name = String::from_utf8_lossy(&output.stdout).trim().to_string();
             Ok(app_name)
@@ -71,11 +65,11 @@ impl AppleScriptManager {
         match Self::get_frontmost_app() {
             Ok(app_name) => {
                 let app_name = app_name.to_lowercase();
-                
+
                 // List of known problematic Electron-based or difficult apps
                 let problematic_apps = [
                     "visual studio code",
-                    "code", 
+                    "code",
                     "atom",
                     "discord",
                     "slack",
@@ -90,17 +84,17 @@ impl AppleScriptManager {
                     "insomnia",
                     "electron",
                 ];
-                
+
                 for problematic in &problematic_apps {
                     if app_name.contains(problematic) {
                         info!("🚨 Detected problematic app: {}", app_name);
                         return true;
                     }
                 }
-                
+
                 false
             }
-            Err(_) => false
+            Err(_) => false,
         }
     }
 }
@@ -122,7 +116,7 @@ mod tests {
         // This test depends on what app is currently running
         let result = AppleScriptManager::is_problematic_app();
         // Should return a boolean
-        assert!(result == true || result == false);
+        assert!(result || !result);
     }
 
     #[test]

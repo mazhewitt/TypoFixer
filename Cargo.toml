@@ -3,6 +3,14 @@ name = "typo-fixer"
 version = "1.0.0"
 edition = "2021"
 
+[[bin]]
+name = "test_model_quick"
+path = "test_model_quick.rs"
+
+[[bin]]
+name = "test_components"
+path = "test_components.rs"
+
 [dependencies]
 # Use cocoa for now - it's more mature for this use case
 objc2 = "0.6"
@@ -20,11 +28,15 @@ toml_edit = { version = "0.22.27", features = ["serde"] }
 tracing = "0.1.41"
 tracing-subscriber = "0.3"
 chrono = "0.4.41"
-# Ollama integration for LLM
-reqwest = { version = "0.11", features = ["json"] }
-tokio = { version = "1.0", features = ["full"] }
+# Candle + CoreML integration for LLM
+candle-core = "0.9.1"
+# Use local candle-coreml checkout to ensure latest API with ModelConfig/QwenConfig
+# Async support for model operations
+tokio = { version = "1.0", features = ["rt", "rt-multi-thread", "macros", "time"] }
+dirs = "5.0"
 serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+candle-coreml = { path = "../candle-coreml" }
+anyhow = "1.0"
 
 [dev-dependencies]
 tempfile = "3.20.0"

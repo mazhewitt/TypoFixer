@@ -1,51 +1,54 @@
 // Refactored accessibility module with improved structure and reduced duplication
 
-pub mod ax_api;
-pub mod text_extraction;
-pub mod clipboard;
+#![allow(deprecated)]
+#![allow(unexpected_cfgs)]
+
 pub mod applescript;
+pub mod ax_api;
+pub mod clipboard;
 pub mod fallbacks;
+pub mod text_extraction;
 
 // Re-export commonly used types and functions
-pub use ax_api::{ElementRef, AxApi};
-pub use text_extraction::TextExtractor;
-pub use clipboard::{ClipboardManager, SystemClipboard};
 pub use applescript::AppleScriptManager;
+pub use ax_api::{AxApi, ElementRef};
+pub use clipboard::{ClipboardManager, SystemClipboard};
 pub use fallbacks::FallbackManager;
+pub use text_extraction::TextExtractor;
 
 // Legacy compatibility functions - these wrap the new modular implementation
-use tracing::info;
 use std::ops::Range;
+use tracing::info;
 
 /// Get the currently focused accessibility element
 pub fn get_focused_element() -> Result<ElementRef, Box<dyn std::error::Error>> {
     let system_element = AxApi::get_system_element()?;
-    
+
     // Get focused application
-    match AxApi::get_attribute_value(system_element, "AXFocusedApplication")? {
+    match unsafe { AxApi::get_attribute_value(system_element, "AXFocusedApplication") }? {
         Some(app_ref) => {
             let focused_app = app_ref as ElementRef;
-            
+
             // Get focused element from application
-            match AxApi::get_attribute_value(focused_app, "AXFocusedUIElement")? {
+            match unsafe { AxApi::get_attribute_value(focused_app, "AXFocusedUIElement") }? {
                 Some(element_ref) => {
                     let focused_element = element_ref as ElementRef;
-                    
+
                     // Verify this is a text-editable element
-                    if AxApi::is_text_editable(focused_element) {
-                        let role = AxApi::get_element_role(focused_element)?;
+                    if unsafe { AxApi::is_text_editable(focused_element) } {
+                        let role = unsafe { AxApi::get_element_role(focused_element) }?;
                         info!("✅ Found focused text element: {}", role);
                         Ok(focused_element)
                     } else {
-                        let role = AxApi::get_element_role(focused_element)
+                        let role = unsafe { AxApi::get_element_role(focused_element) }
                             .unwrap_or_else(|_| "unknown".to_string());
-                        Err(format!("Focused element is not a text field (role: {})", role).into())
+                        Err(format!("Focused element is not a text field (role: {role})").into())
                     }
                 }
-                None => Err("No focused UI element found".into())
+                None => Err("No focused UI element found".into()),
             }
         }
-        None => Err("No focused application found".into())
+        None => Err("No focused application found".into()),
     }
 }
 
@@ -55,45 +58,58 @@ pub fn is_secure_field(element: &ElementRef) -> bool {
     if element.is_null() {
         return false;
     }
-    
-    AxApi::is_secure_field(*element)
+
+    unsafe { AxApi::is_secure_field(*element) }
 }
 
 /// Extract text to be corrected from the given element
-pub fn get_text_to_correct(element: &ElementRef) -> Result<(String, Range<usize>), Box<dyn std::error::Error>> {
+pub fn get_text_to_correct(
+    element: &ElementRef,
+) -> Result<(String, Range<usize>), Box<dyn std::error::Error>> {
     // Handle null element (testing scenario)
     if element.is_null() {
         return Ok(("I recieve teh mesage with thier help.".to_string(), 0..37));
     }
-    
+
     // Use the new accessibility extraction
     FallbackManager::try_accessibility_extraction(element)
 }
 
 /// Set corrected text in the given element
-pub fn set_text(element: &ElementRef, text: &str, range: Range<usize>) -> Result<(), Box<dyn std::error::Error>> {
+pub fn set_text(
+    element: &ElementRef,
+    text: &str,
+    range: Range<usize>,
+) -> Result<(), Box<dyn std::error::Error>> {
     // Handle null element (testing scenario)
     if element.is_null() {
         info!("📝 Mock set text: '{}'", text);
-        println!("✅ Mock corrected text: {}", text);
+        println!("✅ Mock corrected text: {text}");
         return Ok(());
     }
-    
+
     FallbackManager::try_accessibility_setting(element, text, range)
 }
 
 /// Extract text using multiple fallback strategies
-pub fn get_text_to_correct_with_fallbacks(element: &ElementRef) -> Result<(String, Range<usize>), Box<dyn std::error::Error>> {
+pub fn get_text_to_correct_with_fallbacks(
+    element: &ElementRef,
+) -> Result<(String, Range<usize>), Box<dyn std::error::Error>> {
     FallbackManager::extract_text_with_fallbacks(element)
 }
 
 /// Set text using multiple fallback strategies
-pub fn set_text_with_fallbacks(element: &ElementRef, text: &str, range: Range<usize>) -> Result<(), Box<dyn std::error::Error>> {
+pub fn set_text_with_fallbacks(
+    element: &ElementRef,
+    text: &str,
+    range: Range<usize>,
+) -> Result<(), Box<dyn std::error::Error>> {
     FallbackManager::set_text_with_fallbacks(element, text, range)
 }
 
 /// Extract text via clipboard fallback
-pub fn get_text_via_clipboard_fallback() -> Result<(String, Range<usize>), Box<dyn std::error::Error>> {
+pub fn get_text_via_clipboard_fallback(
+) -> Result<(String, Range<usize>), Box<dyn std::error::Error>> {
     let clipboard_manager = ClipboardManager::new(SystemClipboard);
     let text = clipboard_manager.extract_text_via_clipboard()?;
     let (sentence, range) = TextExtractor::extract_last_sentence(&text);
@@ -127,21 +143,25 @@ pub fn get_sentence_range(text: &str) -> Result<Range<usize>, Box<dyn std::error
 
 #[deprecated(note = "This function is not needed in the new architecture")]
 #[allow(dead_code)]
-pub fn get_selection_range(_range_ref: *const std::ffi::c_void) -> Result<Range<usize>, Box<dyn std::error::Error>> {
+pub fn get_selection_range(
+    _range_ref: *const std::ffi::c_void,
+) -> Result<Range<usize>, Box<dyn std::error::Error>> {
     Ok(0..0)
 }
 
 #[deprecated(note = "Use AxApi methods instead")]
 #[allow(dead_code)]
-pub fn nsstring_to_string(ns_str: cocoa::base::id) -> String {
-    unsafe {
-        use objc::{msg_send, sel, sel_impl};
-        let utf8_str: *const i8 = msg_send![ns_str, UTF8String];
-        if utf8_str.is_null() {
-            String::new()
-        } else {
-            std::ffi::CStr::from_ptr(utf8_str).to_string_lossy().to_string()
-        }
+/// # Safety
+/// The ns_str parameter must be a valid NSString object
+pub unsafe fn nsstring_to_string(ns_str: cocoa::base::id) -> String {
+    use objc::{msg_send, sel, sel_impl};
+    let utf8_str: *const i8 = msg_send![ns_str, UTF8String];
+    if utf8_str.is_null() {
+        String::new()
+    } else {
+        std::ffi::CStr::from_ptr(utf8_str)
+            .to_string_lossy()
+            .to_string()
     }
 }
 
@@ -161,7 +181,7 @@ mod tests {
     fn test_is_secure_field_mock() {
         let dummy_element = std::ptr::null_mut();
         let result = is_secure_field(&dummy_element);
-        assert_eq!(result, false);
+        assert!(!result);
     }
 
     #[test]
@@ -171,12 +191,14 @@ mod tests {
         assert!(result.is_err());
         let error_msg = result.unwrap_err().to_string();
         // Removed println! to avoid terminal output in tests
-        assert!(error_msg.contains("Accessibility permissions not granted") || 
-                error_msg.contains("No focused application found") ||
-                error_msg.contains("Failed to get focused application") ||
-                error_msg.contains("Failed to create system element") ||
-                error_msg.contains("Could not determine element role") ||
-                error_msg.contains("Failed to get attribute"));
+        assert!(
+            error_msg.contains("Accessibility permissions not granted")
+                || error_msg.contains("No focused application found")
+                || error_msg.contains("Failed to get focused application")
+                || error_msg.contains("Failed to create system element")
+                || error_msg.contains("Could not determine element role")
+                || error_msg.contains("Failed to get attribute")
+        );
     }
 
     #[test]
@@ -208,7 +230,7 @@ mod tests {
         {
             let range = get_sentence_range("Test sentence.").unwrap();
             assert_eq!(range.end, 14);
-            
+
             let selection_range = get_selection_range(std::ptr::null()).unwrap();
             assert_eq!(selection_range, 0..0);
         }
