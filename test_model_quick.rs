@@ -40,7 +40,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let model_result = timeout(
         Duration::from_secs(120), // 2 minute timeout for quick test
-        TypoFixer::new_with_config("configs/qwen-typo-fixer-ane.json", ".", true),
+        TypoFixer::new(None, true),
     )
     .await;
 

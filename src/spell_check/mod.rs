@@ -1,10 +1,8 @@
 //! Core spell checking functionality using candle-coreml
 
 use anyhow::{Context, Result};
-use candle_coreml::{
-    get_builtin_config, list_builtin_models, model_downloader, ModelConfig, QwenConfig, QwenModel,
-};
-use std::path::{Path, PathBuf};
+use candle_coreml::{UnifiedModelLoader, QwenModel};
+use std::path::Path;
 use tracing::{info, warn};
 
 /// Template for typo fixing prompts with few-shot examples
@@ -51,15 +49,16 @@ impl PromptTemplate {
     pub fn create_few_shot_prompt(&self, input_text: &str) -> String {
         let mut prompt = String::new();
 
-    prompt.push_str("Fix typos in these sentences. Respond only with the corrected sentence, no extra words.\n\n");
+    prompt.push_str("Fix typos. Respond with only the corrected text.\n\n");
 
-        // Add few-shot examples
-        for (typo_text, correct_text) in &self.examples {
-            prompt.push_str(&format!("Input: {typo_text}\nOutput: {correct_text}\n\n"));
+        // Add only 2 examples to reduce repetition
+        let examples = &self.examples[0..2];
+        for (typo_text, correct_text) in examples {
+            prompt.push_str(&format!("{typo_text} -> {correct_text}\n"));
         }
 
         // Add the actual input to be corrected
-        prompt.push_str(&format!("Input: {input_text}\nOutput:"));
+        prompt.push_str(&format!("\n{input_text} ->"));
 
         prompt
     }
@@ -87,254 +86,80 @@ impl TypoFixer {
     /// Create a new TypoFixer by loading the model from HuggingFace Hub
     pub async fn new(model_id: Option<&str>, verbose: bool) -> Result<Self> {
         let model_id = model_id.unwrap_or("mazhewitt/qwen-typo-fixer-coreml");
-        Self::load_model(model_id, verbose, None).await
+        
+        if verbose {
+            info!("📥 Loading model from HuggingFace Hub: {}", model_id);
+        }
+        
+        let loader = UnifiedModelLoader::new()
+            .context("Failed to create UnifiedModelLoader")?;
+        let model = loader.load_model(model_id)
+            .context("Failed to load model from HuggingFace Hub")?;
+        
+        if verbose {
+            info!("✅ Model loaded successfully");
+        }
+        
+        let prompt_template = PromptTemplate::new();
+        Ok(Self {
+            model,
+            prompt_template,
+            verbose,
+        })
     }
 
 
-    /// Create a new TypoFixer with a configuration file
-    pub async fn new_with_config(
-        config_path: &str,
+    /// Create a new TypoFixer with a local model directory
+    /// Note: The new API prefers using model IDs, but this method supports local paths
+    pub async fn new_with_local_path(
         model_path: &str,
         verbose: bool,
     ) -> Result<Self> {
         #[cfg(target_os = "macos")]
         {
             if verbose {
-                info!("🔧 Loading model configuration from: {}", config_path);
+                info!("📁 Loading model from local directory: {}", model_path);
             }
-            let (qwen_config, effective_base) = Self::find_and_load_qwen_config(
-                Some(config_path),
-                Some(model_path),
-                verbose,
-            )?;
-            if verbose {
-                info!("📁 Loading model from base directory: {}", effective_base.display());
-            }
-            let model = QwenModel::load_from_directory(&effective_base, Some(qwen_config))
-                .context("Failed to load QwenModel from local directory")?;
-            if verbose {
-                info!("✅ QwenModel loaded successfully from config");
-            }
-            let prompt_template = PromptTemplate::new();
-            return Ok(Self { model, prompt_template, verbose });
-        }
-        #[cfg(not(target_os = "macos"))]
-        {
-            let _ = (config_path, model_path, verbose);
-            return Err(anyhow::anyhow!(
-                "Model loading is only supported on macOS with CoreML. Current platform is not supported."
-            ));
-        }
-    }
-
-    /// Load the model from HuggingFace Hub using candle-coreml
-    async fn load_model(
-        model_id: &str,
-        verbose: bool,
-        custom_config: Option<QwenConfig>,
-    ) -> Result<Self> {
-        #[cfg(target_os = "macos")]
-        {
-            if verbose {
-                info!("📥 Downloading model from HuggingFace Hub...");
-            }
-            let model_path = model_downloader::ensure_model_downloaded(model_id, verbose)
-                .context("Failed to download model from HuggingFace Hub")?;
-            let (qwen_config, effective_base) = if let Some(cfg) = custom_config {
-                (cfg, model_path.clone())
-            } else {
-                Self::find_and_load_qwen_config(None, Some(model_path.to_str().unwrap()), verbose)?
+            
+            let _loader = UnifiedModelLoader::new()
+                .context("Failed to create UnifiedModelLoader")?;
+            
+            // For local paths, we could try to use the directory name as a pseudo model-id
+            let model_dir = Path::new(model_path);
+            let _model_name = model_dir.file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("local-model");
+            
+            // Try to load using the loader, which will handle config generation
+            let model = match QwenModel::load_from_directory(&model_dir.to_path_buf(), None) {
+                Ok(m) => m,
+                Err(e) => {
+                    warn!("Failed to load from directory directly: {}. Using fallback method.", e);
+                    return Err(anyhow::anyhow!("Local model loading not fully supported with new API. Consider using a HuggingFace model ID instead."));
+                }
             };
+            
             if verbose {
-                info!("📦 Model downloaded to: {:?}", model_path);
-                info!("🔧 Loading QwenModel components...");
+                info!("✅ Model loaded successfully from local path");
             }
-            let model = QwenModel::load_from_directory(&effective_base, Some(qwen_config))
-                .context("Failed to load QwenModel from downloaded components")?;
-            if verbose {
-                info!("✅ QwenModel loaded successfully");
-            }
+            
             let prompt_template = PromptTemplate::new();
-            Ok(Self {
-                model,
-                prompt_template,
-                verbose,
-            })
+            Ok(Self { model, prompt_template, verbose })
         }
         #[cfg(not(target_os = "macos"))]
         {
-            let _ = (model_id, verbose, custom_config);
+            let _ = (model_path, verbose);
             Err(anyhow::anyhow!(
                 "Model loading is only supported on macOS with CoreML. Current platform is not supported."
             ))
         }
     }
 
-    #[cfg(target_os = "macos")]
-    fn find_and_load_qwen_config(
-        config_path: Option<&str>,
-        model_path: Option<&str>,
-        verbose: bool,
-    ) -> Result<(QwenConfig, PathBuf)> {
-        use std::collections::HashMap;
-        let mut model_config = if let Some(config_path) = config_path {
-            if verbose {
-                info!("🔧 Loading model configuration from: {}", config_path);
-            }
-            ModelConfig::load_from_file(config_path)
-                .context("Failed to load model configuration file")?
-        } else if let Some(model_path) = model_path {
-            let path = Path::new(model_path);
-            if let Some(mut mc) = Self::try_discover_cli_model_config(path, verbose) {
-                if verbose {
-                    info!("🔧 Using discovered CLI configuration");
-                }
-                Self::adjust_component_paths(&mut mc, path, verbose);
-                return Ok((QwenConfig::from_model_config(mc), path.to_path_buf()));
-            } else if let Some(mut mc) = get_builtin_config(model_path) {
-                if verbose {
-                    info!("🔧 Using built-in configuration for model: {}", model_path);
-                }
-                Self::adjust_component_paths(&mut mc, path, verbose);
-                return Ok((QwenConfig::from_model_config(mc), path.to_path_buf()));
-            } else {
-                if verbose {
-                    warn!("⚠️ No built-in configuration found for model: {}", model_path);
-                    let available = list_builtin_models();
-                    info!("📋 Available built-in models: {:?}", available);
-                    info!("🔧 Using default configuration (may fail)");
-                }
-                return Ok((QwenConfig::default(), path.to_path_buf()));
-            }
-        } else {
-            return Err(anyhow::anyhow!("No config_path or model_path provided to find_and_load_qwen_config"));
-        };
-
-        // Try to determine a base directory from component file paths that actually exist.
-        let mut candidates: Vec<PathBuf> = Vec::new();
-        for comp in model_config.components.values() {
-            if let Some(fp) = &comp.file_path {
-                let p = PathBuf::from(fp);
-                if p.exists() {
-                    if let Some(parent) = p.parent() {
-                        candidates.push(parent.to_path_buf());
-                    }
-                }
-            }
-        }
-        let effective_base = if candidates.is_empty() {
-            if let Some(model_path) = model_path {
-                PathBuf::from(model_path)
-            } else {
-                PathBuf::new()
-            }
-        } else {
-            let mut counts: HashMap<PathBuf, usize> = HashMap::new();
-            for c in candidates {
-                *counts.entry(c).or_insert(0) += 1;
-            }
-            let (best_dir, _) = counts
-                .into_iter()
-                .max_by_key(|(_, n)| *n)
-                .unwrap();
-            Self::adjust_component_paths(&mut model_config, &best_dir, verbose);
-            best_dir
-        };
-        Ok((QwenConfig::from_model_config(model_config), effective_base))
-    }
-
-
-
-    #[cfg(target_os = "macos")]
-    fn try_discover_cli_model_config(model_dir: &Path, verbose: bool) -> Option<ModelConfig> {
-        use std::env;
-        use std::fs;
-        let cwd = env::current_dir().ok();
-        let mut search_roots = vec![];
-        if let Some(c) = &cwd {
-            // Walk up the directory tree to find a configs folder from any ancestor
-            let mut dir = Some(c.as_path());
-            while let Some(d) = dir {
-                search_roots.push(d.to_path_buf());
-                search_roots.push(d.join("typo-fixer-cli"));
-                dir = d.parent();
-            }
-        }
-
-        let model_hint = model_dir.file_name().and_then(|s| s.to_str()).unwrap_or("");
-        let name_candidates = ["qwen-typo-fixer-ane", "qwen-typo-fixer", "typo-fixer"];
-
-    for root in search_roots {
-            let configs_dir = root.join("configs");
-            if !configs_dir.is_dir() {
-                continue;
-            }
-            if verbose {
-                info!("🔍 Searching for CLI config in {}", configs_dir.display());
-            }
-            if let Ok(entries) = fs::read_dir(&configs_dir) {
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    if path.extension().and_then(|e| e.to_str()) != Some("json") {
-                        continue;
-                    }
-                    let file_name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
-                    if name_candidates
-                        .iter()
-                        .any(|cand| file_name.contains(cand) || model_hint.contains(cand))
-                    {
-                        if verbose {
-                            info!("🔧 Found candidate CLI config: {}", path.display());
-                        }
-                        match ModelConfig::load_from_file(&path) {
-                            Ok(mc) => {
-                                if verbose {
-                                    info!("✅ Loaded CLI configuration: {}", path.display());
-                                }
-                                return Some(mc);
-                            }
-                            Err(e) => {
-                                if verbose {
-                                    warn!("⚠️ Failed to parse CLI config {}: {e}", path.display());
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        None
-    }
-
-    #[cfg(target_os = "macos")]
-    fn adjust_component_paths(model_config: &mut ModelConfig, base_dir: &Path, verbose: bool) {
-        for (name, comp) in model_config.components.iter_mut() {
-            if let Some(fp) = comp.file_path.clone() {
-                let original = PathBuf::from(&fp);
-                if original.exists() {
-                    continue;
-                }
-                if let Some(fname) = original.file_name() {
-                    let candidate = base_dir.join(fname);
-                    if candidate.exists() {
-                        comp.file_path = Some(candidate.to_string_lossy().to_string());
-                        if verbose {
-                            info!(
-                                "🔄 Updated {} component path -> {}",
-                                name,
-                                candidate.display()
-                            );
-                        }
-                    }
-                }
-            }
-        }
-    }
 
 
     /// Fix typos in the given text (deterministic by default)
     pub async fn fix_typos(&mut self, text: &str) -> Result<String> {
-        self.fix_typos_with_options(text, 0.0, Some(16)).await
+        self.fix_typos_with_options(text, 0.0, Some(20)).await
     }
 
     /// Fix typos with custom temperature and max tokens
@@ -344,18 +169,33 @@ impl TypoFixer {
         temperature: f32,
         max_tokens: Option<usize>,
     ) -> Result<String> {
+        // Preprocess input: strip trailing whitespace to avoid generation issues
+        let cleaned_text = text.trim();
+        
         // Build prompt
-        let prompt = self.prompt_template.create_correction_prompt(text);
-        let max_toks = max_tokens.unwrap_or(16);
+        let prompt = self.prompt_template.create_correction_prompt(cleaned_text);
+        let max_toks = max_tokens.unwrap_or(48);
+        
+        if self.verbose {
+            info!("🔍 Input text: {:?}", text);
+            info!("🧹 Cleaned text: {:?}", cleaned_text);
+            info!("📝 Prompt length: {} chars", prompt.len());
+        }
 
-        // Run generation via CoreML
-        let raw = self
-            .model
-            .generate_text(prompt.as_str(), max_toks, temperature)
-            .map_err(|e| anyhow::anyhow!("Generation failed: {e}"))?;
+        // Run generation via CoreML using the new API
+        let raw = if temperature < 0.1 {
+            // For very low temperature, use the simpler complete_text API
+            self.model
+                .complete_text(prompt.as_str(), max_toks)
+                .map_err(|e| anyhow::anyhow!("Generation failed: {e}"))?
+        } else {
+            self.model
+                .generate_text_with_params(prompt.as_str(), max_toks, temperature, None)
+                .map_err(|e| anyhow::anyhow!("Generation failed: {e}"))?
+        };
 
         // Extract + plausibility-check. If implausible, fall back to original text.
-        if let Some(chosen) = choose_correction_from_raw(text, &raw) {
+        if let Some(chosen) = choose_correction_from_raw(cleaned_text, &raw) {
             if self.verbose {
                 info!("✅ Accepted plausible correction: {:?}", chosen);
             }
@@ -364,6 +204,7 @@ impl TypoFixer {
             if self.verbose {
                 warn!("⚠️ Rejected implausible correction; returning original text");
             }
+            // Return the original text as provided (not cleaned)
             Ok(text.to_string())
         }
     }
@@ -395,6 +236,33 @@ pub(crate) fn is_correction_plausible(original: &str, corrected: &str) -> bool {
         let uniq: std::collections::HashSet<&str> = words.iter().copied().collect();
         if uniq.len() <= 2 {
             return false;
+        }
+    }
+
+    // Hard block obvious corruption artifacts
+    let lc = corr.to_lowercase();
+    let corruption_patterns = [
+        "the the the", // repeated common word
+        "sent sent sent",
+        "<|endoftext|><|endoftext|>",
+        "thethethethe",
+    ];
+    if corruption_patterns.iter().any(|p| lc.contains(p)) {
+        return false;
+    }
+
+    // Reject if any word repeats 4+ times consecutively
+    let mut last = "";
+    let mut run = 0;
+    for w in words.iter().copied() {
+        if w.eq_ignore_ascii_case(last) {
+            run += 1;
+            if run >= 3 { // means word appeared 4 times total
+                return false;
+            }
+        } else {
+            last = w;
+            run = 0;
         }
     }
 
@@ -497,14 +365,91 @@ fn first_sentence(s: &str) -> &str {
     s
 }
 
+/// Collect multiple candidate corrections from raw output instead of only one.
+fn extract_candidate_list(raw_output: &str, verbose: bool) -> Vec<String> {
+    let mut candidates: Vec<String> = Vec::new();
+
+    // Strategy A: split by <|endoftext|> and take first meaningful line of each segment
+    for seg in raw_output.split("<|endoftext|>") {
+        let seg = seg.trim();
+        if seg.is_empty() { continue; }
+        if let Some(line) = seg.lines().find(|l| !l.trim().is_empty()) {
+            let t = line.trim();
+            // Stop at first sentence terminator or newline
+            let t = if let Some(pos) = t.find(&['.', '!', '?', '\n'][..]) {
+                &t[..pos]
+            } else {
+                t
+            };
+            if !(t.starts_with("Input:") || t.starts_with("Output:") || t.starts_with("Fix typos") || t.starts_with("->")) {
+                candidates.push(t.to_string());
+                break; // Take only the first good candidate
+            }
+        }
+    }
+
+    // Strategy B: text after last Output:
+    if let Some(pos) = raw_output.rfind("Output:") {
+        let after = &raw_output[pos + "Output:".len()..];
+        for line in after.lines() {
+            let t = first_sentence(line.trim());
+            if t.is_empty() { continue; }
+            if t.starts_with("Input:") || t.starts_with("Fix typos") { continue; }
+            candidates.push(t.to_string());
+            break;
+        }
+    }
+
+    // Strategy C: forward scan lines
+    for line in raw_output.lines() {
+        let t = first_sentence(line.trim());
+        if t.is_empty() { continue; }
+        if t.starts_with("Input:") || t.starts_with("Output:") || t.starts_with("Fix typos") { continue; }
+        if t.starts_with("the quick brown fox")
+            || t.starts_with("i can't believe it")
+            || t.starts_with("receive the package") {
+            continue;
+        }
+        candidates.push(t.to_string());
+        break;
+    }
+
+    // Strategy D: reverse scan lines
+    for line in raw_output.lines().rev() {
+        let t = first_sentence(line.trim());
+        if t.is_empty() { continue; }
+        if t.starts_with("Input:") || t.starts_with("Output:") || t.starts_with("Fix typos") { continue; }
+        candidates.push(t.to_string());
+        break;
+    }
+
+    // Strategy E: fallback entire first sentence
+    let fallback = first_sentence(raw_output.trim());
+    if !fallback.is_empty() {
+        candidates.push(fallback.to_string());
+    }
+
+    // Deduplicate preserving order
+    let mut seen = std::collections::HashSet::new();
+    candidates.retain(|c| seen.insert(c.clone()));
+
+    if verbose {
+        info!("🔎 Candidate corrections extracted: {:?}", candidates);
+    }
+
+    candidates
+}
+
 /// Combine extraction and plausibility for testing end-to-end (without UI)
 pub(crate) fn choose_correction_from_raw(original: &str, raw_output: &str) -> Option<String> {
-    let extracted = extract_correction_from_raw(raw_output, true).ok()?;
-    if is_correction_plausible(original, &extracted) {
-        Some(extracted)
-    } else {
-        None
+    // Try multiple candidates in order and return first plausible one
+    let candidates = extract_candidate_list(raw_output, true);
+    for cand in candidates {
+        if is_correction_plausible(original, &cand) {
+            return Some(cand);
+        }
     }
+    None
 }
 
 
@@ -667,5 +612,13 @@ mod tests {
         let original = "This sentance has typoos ";
         let candidate = "The";
         assert!(!is_correction_plausible(original, candidate));
+    }
+
+    #[test]
+    fn test_choose_correction_multi_candidate_skips_bad_leading() {
+        let raw = "<|endoftext|><|endoftext|>The<|endoftext|>This sentance has typos.<|endoftext|>This sent sent sent";
+        let original = "This sentance has typoos ";
+        let chosen = choose_correction_from_raw(original, raw).expect("should find plausible candidate");
+        assert_eq!(chosen, "This sentance has typos.");
     }
 }

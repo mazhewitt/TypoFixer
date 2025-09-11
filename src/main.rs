@@ -38,6 +38,17 @@ fn handle_hotkey_press() {
     let start = Instant::now();
 
     info!("🎯 HOTKEY PRESSED! Processing text correction...");
+    
+    // Check if model is loaded
+    TYPO_FIXER.with(|model_cell| {
+        match model_cell.borrow().as_ref() {
+            Some(_) => info!("✅ Model is loaded and ready"),
+            None => {
+                error!("❌ Model is not loaded! This is the problem.");
+                return;
+            }
+        }
+    });
 
     match process_text_correction() {
         Ok(true) => {
@@ -45,7 +56,7 @@ fn handle_hotkey_press() {
             info!("Text correction successful in {:?}", start.elapsed());
         }
         Ok(false) => {
-            debug!("No correction needed");
+            info!("No correction needed");
         }
         Err(e) => {
             error!("Text correction failed: {}", e);
@@ -235,7 +246,7 @@ async fn load_llama_model_async() -> Result<(), String> {
     let mut model = match config_path {
         Some(cfg) => {
             info!("Attempting config-based load from {}", cfg.display());
-            match TypoFixer::new_with_config(cfg.to_string_lossy().as_ref(), ".", true)
+            match TypoFixer::new_with_local_path(cfg.to_string_lossy().as_ref(), true)
                 .await
             {
                 Ok(model) => model,
@@ -285,7 +296,8 @@ fn load_llama_model() -> Result<(), Box<dyn std::error::Error>> {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Initialize logging
+    // Initialize logging with verbose output
+    std::env::set_var("RUST_LOG", "info,typo_fixer=debug,candle_coreml=info");
     tracing_subscriber::fmt::init();
 
     // Load config
@@ -301,8 +313,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Start hotkey event loop in background, but initialize the model on the same thread
     start_hotkey_event_loop_with_init(
         || {
-            if let Err(e) = load_llama_model() {
-                error!("Failed to load model: {}", e);
+            info!("🔄 Starting model loading on hotkey thread...");
+            match load_llama_model() {
+                Ok(()) => {
+                    info!("✅ Model loading completed successfully on hotkey thread!");
+                }
+                Err(e) => {
+                    error!("❌ Failed to load model on hotkey thread: {}", e);
+                }
             }
         },
         handle_hotkey_press,

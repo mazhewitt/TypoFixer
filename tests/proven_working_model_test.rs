@@ -28,11 +28,11 @@ async fn test_proven_working_model_integration() {
     );
     println!("✅ Config and model files exist");
 
-    // Load model using the EXACT same method as working typo-fixer-cli
-    println!("\n🔄 Loading model with config file (same as working CLI)...");
+    // Load model using the new local path method
+    println!("\n🔄 Loading model with local path (same as working CLI)...");
     let model_result = timeout(
         Duration::from_secs(120), // 2 minutes should be enough for local loading
-        TypoFixer::new_with_config(config_path, model_path, true),
+        TypoFixer::new_with_local_path(model_path, true),
     )
     .await;
 
@@ -125,7 +125,7 @@ async fn test_proven_model_local_loading() {
 
     let model_result = timeout(
         Duration::from_secs(120),
-        TypoFixer::new_with_config("configs/qwen-typo-fixer-ane.json", model_path, true),
+        TypoFixer::new_with_local_path(model_path, true),
     )
     .await;
 
@@ -187,7 +187,7 @@ async fn test_proven_model_performance() {
     // Load model quietly for performance testing
     let mut model = timeout(
         Duration::from_secs(120),
-        TypoFixer::new_with_config(config_path, model_path, false), // No verbose
+        TypoFixer::new_with_local_path(model_path, false), // No verbose
     )
     .await
     .expect("Performance test model loading timeout")

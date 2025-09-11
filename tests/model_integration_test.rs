@@ -16,7 +16,7 @@ async fn test_model_integration() {
     println!("📋 Testing model loading with config file...");
     let model_result = timeout(
         Duration::from_secs(300), // 5 minute timeout for model download
-        TypoFixer::new_with_config("configs/qwen-typo-fixer-ane.json", ".", true),
+        TypoFixer::new(None, true),
     )
     .await;
 

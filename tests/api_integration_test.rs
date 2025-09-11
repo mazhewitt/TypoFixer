@@ -9,11 +9,11 @@ async fn test_typo_fixer_api_integration() {
     
     tracing_subscriber::fmt::try_init().ok();
 
-    // Test 1: Create TypoFixer directly from local config
-    println!("\n📋 Testing TypoFixer::new_with_config...");
+    // Test 1: Create TypoFixer directly from HuggingFace
+    println!("\n📋 Testing TypoFixer::new...");
     let typo_fixer = timeout(
         Duration::from_secs(120),
-        TypoFixer::new_with_config("configs/qwen-typo-fixer-ane.json", ".", true),
+        TypoFixer::new(None, true),
     )
     .await
     .expect("TypoFixer loading timed out")
@@ -35,7 +35,7 @@ async fn test_typo_fixer_api_integration() {
     println!("\n🔧 Testing TypoFixer API...");
     let mut typo_fixer_lib = timeout(
         Duration::from_secs(120),
-        TypoFixer::new_with_config("configs/qwen-typo-fixer-ane.json", ".", true),
+        TypoFixer::new(None, true),
     )
     .await
     .expect("TypoFixer loading timed out")
@@ -110,12 +110,12 @@ async fn test_multiple_model_loading_methods() {
 
     println!("   Specific model result: '{result2}'");
 
-    // Method 3: Config file model (if available)
+    // Method 3: Local path model (if available)
     if std::path::Path::new("configs/qwen-typo-fixer-ane.json").exists() {
-        println!("\n3️⃣ Testing config file model...");
+        println!("\n3️⃣ Testing local path model...");
         let mut model3 = timeout(
             Duration::from_secs(120),
-            TypoFixer::new_with_config("configs/qwen-typo-fixer-ane.json", ".", false),
+            TypoFixer::new_with_local_path("configs/qwen-typo-fixer-ane.json", false),
         )
         .await
         .expect("Config model loading timed out")
@@ -129,9 +129,9 @@ async fn test_multiple_model_loading_methods() {
         .expect("Config model inference timed out")
         .expect("Config model inference failed");
 
-        println!("   Config model result: '{result3}'");
+        println!("   Local path model result: '{result3}'");
     } else {
-        println!("\n3️⃣ Skipping config file test (no config available)");
+        println!("\n3️⃣ Skipping local path test (no config available)");
     }
 
     println!("\n✅ Multiple loading methods test PASSED!");
@@ -158,18 +158,18 @@ async fn test_model_error_handling() {
         Err(_) => println!("   ✅ Invalid model loading timed out (acceptable)"),
     }
 
-    // Test 2: Invalid config file should fail gracefully
-    println!("\n❌ Testing invalid config file...");
+    // Test 2: Invalid local path should fail gracefully
+    println!("\n❌ Testing invalid local path...");
     let invalid_config_result = timeout(
         Duration::from_secs(30),
-        TypoFixer::new_with_config("nonexistent-config.json", ".", false),
+        TypoFixer::new_with_local_path("nonexistent-config.json", false),
     )
     .await;
 
     match invalid_config_result {
-        Ok(Err(_)) => println!("   ✅ Invalid config correctly rejected"),
-        Ok(Ok(_)) => panic!("❌ Invalid config should not load successfully"),
-        Err(_) => println!("   ✅ Invalid config loading timed out (acceptable)"),
+        Ok(Err(_)) => println!("   ✅ Invalid local path correctly rejected"),
+        Ok(Ok(_)) => panic!("❌ Invalid local path should not load successfully"),
+        Err(_) => println!("   ✅ Invalid local path loading timed out (acceptable)"),
     }
 
     // Test 3: Empty input handling

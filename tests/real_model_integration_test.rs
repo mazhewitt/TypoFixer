@@ -50,7 +50,7 @@ async fn test_real_model_loading_and_inference() {
     println!("\n🔄 Step 2: Loading model from config file (NO FALLBACKS)...");
     let model_result = timeout(
         Duration::from_secs(120), // 2 minute timeout
-        TypoFixer::new_with_config(config_path, ".", true),
+        TypoFixer::new_with_local_path(config_path, true),
     )
     .await;
 
@@ -237,7 +237,7 @@ async fn test_model_performance_benchmark() {
     // Load model
     let mut model = timeout(
         Duration::from_secs(120),
-        TypoFixer::new_with_config("configs/qwen-typo-fixer-ane.json", ".", false), // No verbose logging for benchmark
+        TypoFixer::new(None, false), // No verbose logging for benchmark
     )
     .await
     .expect("Benchmark model loading timed out")
